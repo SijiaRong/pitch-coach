@@ -699,9 +699,20 @@ const retry = () =>
   font-weight: 700;
 }
 .poster-dialog-heading button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
   font-size: 23px;
   line-height: 1;
 }
+/* #ifdef MP-WEIXIN */
+.poster-overlay {
+  padding-top: calc(var(--status-bar-height, 0px) + 56px);
+}
+/* #endif */
 .poster-caption {
   display: block;
   color: #98a189;

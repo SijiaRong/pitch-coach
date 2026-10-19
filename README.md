@@ -93,6 +93,17 @@ AI_FINANCE_PARTNER_MODEL=你的财务模型
 
 ### 编译微信小程序
 
+只想在模拟器中体验 Demo，可以先不配置 AppID 或后台：
+
+1. 安装并登录[微信开发者工具](https://developers.weixin.qq.com/miniprogram/dev/devtools/download.html)。
+2. 运行 `pnpm build:weixin`，在开发者工具中导入 `apps/miniprogram/dist/build/mp-weixin`。
+3. 在导入页选择“测试号”，后端服务选择“不使用云服务”；出现项目作者信任提示时，确认来源后运行。
+4. 等待首次编译完成，点击首页“示例报告”，或进入“项目评估”选择行业与融资轮次后查看对应示例。演示完全在本地生成，不需要 API Key。
+
+部分新版工具不接受默认的 `touristappid`，请使用导入页提供的“测试号”入口。开发者工具会把所选测试 AppID 写入本机的 `dist` 配置，该目录已被 Git 忽略。重新构建后，可能需要再次选择测试号。测试号用于开发体验，不能代替正式发布所需的小程序账号。
+
+连接真实后台或准备发布时：
+
 1. 在 `apps/miniprogram/src/manifest.json` 的 `mp-weixin.appid` 填入自己的小程序 AppID。
 2. 把 `apps/miniprogram/.env.example` 复制为该目录下的 `.env.local`，配置 `VITE_API_BASE_URL=https://你的后台域名`。此变量是公开的 API 地址，不是密钥。
 3. 运行 `pnpm build:weixin`。
