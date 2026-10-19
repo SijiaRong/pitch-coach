@@ -1,16 +1,16 @@
 {
-  "name": "融资教练",
+  "name": "AI投了么",
   "appid": "",
   "description": "先被 AI 问倒，再去见投资人。",
   "versionName": "0.1.0",
   "versionCode": "100",
   "vueVersion": "3",
   "mp-weixin": {
-    "appid": "",
+    "appid": "wxd3c6e3d5a255b012",
     "setting": { "urlCheck": true, "es6": true, "minified": true },
     "usingComponents": true,
     "lazyCodeLoading": "requiredComponents"
   },
-  "h5": { "title": "PitchCoach · 融资教练", "router": { "mode": "hash" } },
+  "h5": { "title": "AI投了么", "router": { "mode": "hash" } },
   "uniStatistics": { "enable": false }
 }

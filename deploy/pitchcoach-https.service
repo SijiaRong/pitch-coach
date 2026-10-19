@@ -1,0 +1,46 @@
+[Unit]
+Description=AI投了么 dedicated HTTPS gateway
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=120
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=pitchcoach-web
+Group=pitchcoach-web
+Environment=XDG_DATA_HOME=/var/lib/pitchcoach-https
+Environment=XDG_CONFIG_HOME=/var/lib/pitchcoach-https/config
+StateDirectory=pitchcoach-https
+StateDirectoryMode=0700
+ExecStart=/opt/pitch-coach/bin/caddy run --config /etc/pitch-coach/Caddyfile --adapter caddyfile
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=20
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CPUQuota=25%
+CPUWeight=20
+MemoryHigh=192M
+MemoryMax=256M
+MemorySwapMax=0
+TasksMax=64
+LimitNOFILE=8192
+UMask=0077
+LogRateLimitIntervalSec=60s
+LogRateLimitBurst=100
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

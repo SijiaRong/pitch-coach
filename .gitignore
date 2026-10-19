@@ -12,3 +12,21 @@ dist/
 coverage/
 .artifacts/
 project.private.config.json
+data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.sqlite-journal
+*.db
+*.db-*
+*.enc
+secrets/
+# Generated previews, local review records, and private deployment notes.
+/output/
+/deploy/README.md

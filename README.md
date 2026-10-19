@@ -1,13 +1,13 @@
 <div align="center">
 
-# PitchCoach · 融资教练
+# AI投了么
 
 **先被 AI 问倒，再去见投资人。**
 
-一个把创业者的自我感动，变成可验证假设的开源微信小程序。
+一个把创业者的自我感动，变成可验证假设的源码公开微信小程序。
 
 [![CI](https://github.com/SijiaRong/pitch-coach/actions/workflows/ci.yml/badge.svg)](https://github.com/SijiaRong/pitch-coach/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-d9f18a.svg)](LICENSE)
+[![License: PolyForm Noncommercial](https://img.shields.io/badge/License-PolyForm_Noncommercial-d9f18a.svg)](LICENSE)
 ![WeChat Mini Program](https://img.shields.io/badge/微信小程序-uni--app-2f684e)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178c6)
 
@@ -172,9 +172,9 @@ docs/deployment.md       生产部署、环境配置与运行边界
 docs/api.md              API 契约与错误处理
 ```
 
-原始 BP 与正文不写入应用数据库。文件解析在受限实例中完成，Windows 的 PDF 使用独立进程，其余使用工作线程；上传最大 10 MB，PDF/PPTX 最多 80 页，提取正文最多 50,000 字。扫描件 / 图片 BP 暂不支持 OCR。后台任务及报告仅在内存中保留最多 10 分钟，客户端领取后请求删除。进程重启会丢失未领取的任务。
+原始 BP 与正文不写入应用数据库。文件解析在受限实例中完成，Windows 的 PDF 使用独立进程，其余使用工作线程；上传最大 10 MB，PDF/PPTX 最多 80 页，提取正文最多 50,000 字。扫描件 / 图片 BP 暂不支持 OCR。后台报告缓存最多 10 分钟，客户端领取后请求删除。启用微信支付时，订单和额度持久保存；完成报告以加密形式短期缓存，重启后仍可在有效期内领取，未完成任务恢复额度。未启用支付时任务仍为内存实现。
 
-生产环境使用微信登录换取签名会话。默认最多两份评估同时运行，每位用户每滚动 24 小时五次；失败的完整评估返还次数。配额与任务目前为单进程内存实现，公开多实例部署前应接入共享配额存储。更完整说明见 [部署文档](docs/deployment.md)。
+生产环境使用微信登录换取签名会话。默认最多两份评估同时运行；免费开发模式每位用户每滚动 24 小时五次。可开启微信支付，每次真实评审 ¥1.88，演示免费；失败或取消恢复额度，部分完成的报告计一次。付费账本使用独立 SQLite，目前仅支持单实例，人工退款步骤见 [支付接入说明](docs/payments.md)。更完整说明见 [部署文档](docs/deployment.md)。
 
 ## 开发与验证
 
@@ -193,4 +193,10 @@ pnpm check           # 上述完整检查
 
 ## License
 
-[MIT](LICENSE) © 2026 Sijia Rong
+[PolyForm Noncommercial 1.0.0](LICENSE) © 2026 Sijia Rong。著作权声明见 [NOTICE](NOTICE)。
+
+允许个人非商业自用、学习、研究，以及按许可证修改和分享源码。商业用途需要另行取得著作权人的授权；具体允许的用途和例外以 LICENSE 原文为准。商业授权可通过本仓库维护者联系渠道咨询。
+
+这是限制商业用途的源码公开许可，不是 MIT 或 OSI 开源许可证。第三方依赖仍遵循各自原有许可证。本次及后续版本采用新许可；此前已经按 MIT 发布的版本继续保留其原授权，不追溯撤销。
+
+本许可证约束源码及其衍生作品，不替代小程序运营者面向最终用户提供的服务条款。

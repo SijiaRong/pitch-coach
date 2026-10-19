@@ -1,3 +1,4 @@
+import { sharePath } from './share-entry';
 export type ImageShareResult = 'opened' | 'cancelled' | 'preview';
 export interface ImageShareBridge {
   showMenu?: (options: {
@@ -14,6 +15,7 @@ export interface ImageShareBridge {
 export async function openPosterShare(
   path: string,
   bridge: ImageShareBridge,
+  entrancePath = sharePath('poster'),
 ): Promise<ImageShareResult> {
   if (!path) throw new Error('请先生成海报');
   if (bridge.showMenu) {
@@ -22,7 +24,7 @@ export async function openPosterShare(
         bridge.showMenu!({
           path,
           needShowEntrance: true,
-          entrancePath: '/pages/index/index',
+          entrancePath,
           success: () => resolve('opened'),
           fail: (error) =>
             resolve(/cancel/i.test(error.errMsg || '') ? 'cancelled' : 'unsupported'),

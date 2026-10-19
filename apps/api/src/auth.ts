@@ -41,6 +41,7 @@ export async function createSession(
   code: string | undefined,
   config: Config,
   fetcher: typeof fetch = fetch,
+  onAuthenticated?: (owner: string, openid: string) => void,
 ) {
   if (!config.WECHAT_APP_ID || !config.WECHAT_APP_SECRET) {
     if (config.NODE_ENV === 'production')
@@ -65,8 +66,10 @@ export async function createSession(
   }
   if (data.errcode || !data.openid)
     throw new PublicError(401, 'LOGIN_FAILED', '微信登录失败，请重新打开小程序后重试');
+  const owner = `wx:${hmac(data.openid, config.SESSION_SECRET)}`;
+  onAuthenticated?.(owner, data.openid);
   return {
-    token: issueToken(`wx:${hmac(data.openid, config.SESSION_SECRET)}`, config),
+    token: issueToken(owner, config),
     expiresIn: 7200,
     development: false,
   };

@@ -12,7 +12,7 @@ describe('朋友圈优先的海报分享', () => {
     expect(showMenu).toHaveBeenCalledWith(
       expect.objectContaining({
         path: 'wxfile://poster.png',
-        entrancePath: '/pages/index/index',
+        entrancePath: '/pages/index/index?from=poster',
         needShowEntrance: true,
       }),
     );

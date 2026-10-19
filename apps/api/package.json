@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch --env-file-if-exists=../../.env src/server.ts",
-    "build": "tsup",
+    "build": "tsup && node scripts/check-runtime.mjs",
     "start": "node --env-file-if-exists=../../.env dist/server.js",
     "typecheck": "tsc --noEmit"
   },
@@ -24,5 +24,6 @@
   "devDependencies": {
     "tsx": "^4.23.0",
     "tsup": "^8.5.0"
-  }
+  },
+  "license": "PolyForm-Noncommercial-1.0.0"
 }

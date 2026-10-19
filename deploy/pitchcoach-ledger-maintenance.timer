@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily PitchCoach ledger cleanup and encrypted backup
+
+[Timer]
+OnCalendar=*-*-* 03:15:00 Asia/Shanghai
+RandomizedDelaySec=20min
+Persistent=true
+Unit=pitchcoach-ledger-maintenance.service
+
+[Install]
+WantedBy=timers.target

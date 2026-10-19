@@ -1,0 +1,27 @@
+{
+	admin off
+}
+
+api.example.com {
+	encode zstd gzip
+	request_body {
+		max_size 12MB
+	}
+	@api path /health /api/*
+	handle @api {
+		reverse_proxy 127.0.0.1:8787 {
+			header_up X-Forwarded-For {remote_host}
+		}
+	}
+	handle {
+		respond "Not found" 404
+	}
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		-Server
+	}
+	handle_errors {
+		respond "Service temporarily unavailable" 503
+	}
+}

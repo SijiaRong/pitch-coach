@@ -11,6 +11,7 @@ describe('公开海报绘制', () => {
     const ctx = {
       setFillStyle: vi.fn(),
       fillRect: vi.fn(),
+      drawImage: vi.fn(),
       setFontSize: (size: number) => {
         font = size;
       },
@@ -27,7 +28,7 @@ describe('公开海报绘制', () => {
     report.headline = '客户乙支付了987654元';
     expect(await drawPoster(report, true)).toBe('wxfile://poster.png');
     const text = drawn.map((item) => item.text).join('');
-    for (const label of ['阻断性红旗', '橙旗', '关键假设', '死亡预言', '红旗阻断'])
+    for (const label of ['阻断性红旗', '橙旗', '关键假设', '死亡预言', '红旗阻断', '微信搜索「AI投了么」', '免费查看示例报告，练习自己的项目'])
       expect(text).toContain(label);
     expect(text).toContain('虚构演示');
     expect(text).not.toContain('AI 生成');

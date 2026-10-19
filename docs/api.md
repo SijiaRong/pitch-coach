@@ -1,6 +1,6 @@
 # API 契约
 
-除健康检查与配置、创建会话外，接口都需要 `Authorization: Bearer <token>`。响应均禁止缓存，不提供公开报告查询。
+除健康检查、配置、创建会话和已验签的微信支付回调外，接口都需要 `Authorization: Bearer <token>`。响应均禁止缓存，不提供公开报告查询。
 
 ## GET /health
 
@@ -8,7 +8,12 @@
 
 ## GET /api/config
 
-返回 `liveAvailable`、`requireWechat`、`maxFileBytes`，不返回密钥和服务商账号。
+返回 `liveAvailable`、`requireWechat`、`maxFileBytes`、`paymentsEnabled`、`reviewPriceFen`（188），不返回密钥和服务商账号。
+
+付款前可传入 `industry`、`round`、`preferences`（三种不同偏好，以逗号分隔）查询本场阵容。
+例如 `/api/config?industry=ai&round=angel&preferences=technology,growth,financial`。
+此时 `liveAvailable` 表示这三位教练均已配置，而非其他行业存在可用阵容。
+无查询参数时仍返回全局可用状态。非法行业、轮次或偏好组合返回 400。
 
 ## POST /api/session
 
@@ -23,6 +28,8 @@ multipart 字段 `file` 和 `consent=true`。支持 `.pdf`、`.pptx`、`.docx`�
 无足够可提取文字、格式不合法、超限或解析超时都返回明确错误；不提供隐式 OCR。
 
 ## POST /api/evaluations
+
+启用支付时，必须携带 `Idempotency-Key`（12–80 位字母、数字、下划线或连字符）；同一用户重试同一键不会重复扣额度。无额度返回 402 `PAYMENT_REQUIRED`。
 
 请求示例：
 
@@ -90,3 +97,12 @@ multipart 字段 `file` 和 `consent=true`。支持 `.pdf`、`.pptx`、`.docx`�
 ```
 
 常见状态：400 字段 / 同意错误，401 会话失效，404 报告不存在，409 同一用户已有任务，413 资料过大，415 格式不支持，422 解析失败，429 限流 / 配额 / 繁忙，502 模型结果异常，503 未配置模型，504 模型超时。
+
+## 支付接口
+
+- `GET /api/billing/status`：当前用户的可用额度、最近 20 单状态、客服联系方式和可继续/领取的任务 ID。
+- `POST /api/billing/orders`：空对象请求；只由服务端生成 188 分 / CNY 的订单，返回 `orderId` 和微信收银台签名参数。客户端金额字段会被拒绝。已有额度时返回 409 `CREDIT_AVAILABLE`，避免重复付款。
+- `GET /api/billing/orders/:id`：仅查询自己的订单；必要时向微信查单，再返回订单状态与当前额度。跨用户返回 404。
+- `POST /api/payments/wechat/notify`：微信支付回调，不使用用户会话。按原始 JSON 报文验签解密并核对商户、AppID、付款人、金额等信息后才入账，成功返回 204；失败返回非 2xx，由微信重试。重复回调不重复授予额度。
+
+`DELETE /api/evaluations/:id` 在报告完成前取消会恢复额度；完成后只清除报告缓存，不退还已消费额度。部分成功的报告计一次。启用支付时报告通过加密短期缓存支持重启后继续领取；全失败或意外中断的任务恢复额度。更多配置与人工退款流程见 [payments.md](payments.md)。

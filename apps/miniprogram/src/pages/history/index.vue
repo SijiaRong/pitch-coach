@@ -10,6 +10,7 @@ import {
 } from '@pitchcoach/shared';
 import type { EvaluationReport } from '@pitchcoach/shared';
 import PageHeader from '@/components/PageHeader.vue';
+import { openReviewEntry } from '@/lib/review-entry';
 import BottomNav from '@/components/BottomNav.vue';
 import { clearHistory, openReport, readHistory, removeReport } from '@/lib/storage';
 
@@ -19,32 +20,52 @@ onShow(() => {
 });
 const dateLabel = (value: string) => {
   const date = new Date(value);
-  return `${date.getMonth() + 1}.${String(date.getDate()).padStart(2, '0')} · ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+  if (Number.isNaN(date.getTime())) return '时间未知';
+  return `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, '0')}.${String(date.getDate()).padStart(2, '0')} · ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 };
+function viewReport(id: string) {
+  uni.navigateTo({
+    url: `/pages/report/index?id=${encodeURIComponent(id)}`,
+    fail: () => uni.showToast({ title: '暂时无法打开报告，请重试', icon: 'none' }),
+  });
+}
 function clear() {
   uni.showModal({
     title: '清空本机报告',
-    content: '将删除这台设备上的全部历史报告，删除后无法恢复。',
+    content: `将删除这台设备上的 ${reports.value.length} 份报告，删除后无法恢复。需要保留时，请先复制改进清单或保存海报。`,
     confirmText: '清空',
-    confirmColor: '#6d8150',
+    cancelText: '保留记录',
+    confirmColor: '#a24c30',
     success: (result) => {
       if (result.confirm) {
-        clearHistory();
-        reports.value = [];
+        try {
+          clearHistory();
+          reports.value = [];
+          uni.showToast({ title: '本机报告已清空', icon: 'none' });
+        } catch {
+          uni.showToast({ title: '清空失败，请稍后重试', icon: 'none' });
+        }
       }
     },
   });
 }
 function remove(id: string) {
+  const name = reports.value.find((report) => report.id === id)?.projectName || '这份报告';
   uni.showModal({
     title: '删除这份报告',
-    content: '报告仅存在本机，删除后无法恢复。',
+    content: `将删除「${name}」的本机报告，删除后无法恢复。`,
     confirmText: '删除',
-    confirmColor: '#6d8150',
+    cancelText: '保留报告',
+    confirmColor: '#a24c30',
     success: (result) => {
       if (result.confirm) {
-        removeReport(id);
-        reports.value = readHistory();
+        try {
+          removeReport(id);
+          reports.value = readHistory();
+          uni.showToast({ title: '报告已删除', icon: 'none' });
+        } catch {
+          uni.showToast({ title: '删除失败，请稍后重试', icon: 'none' });
+        }
       }
     },
   });
@@ -62,14 +83,15 @@ function remove(id: string) {
     <view v-if="reports.length" class="history-summary"
       ><text>{{ reports.length }} 份本机报告</text><button @click="clear">清空记录</button></view
     >
+    <button v-if="reports.length" class="secondary new-evaluation" @click="openReviewEntry({ intent: 'new' })">评审新项目 +</button>
     <view v-if="!reports.length" class="empty-state"
       ><view class="empty-illustration"
         ><view class="empty-paper"><view /><view /><view /></view><text>↗</text></view
       ><view class="empty-title">第一份报告，等你开场。</view
       ><view class="empty-description"
         >一个想法，一段介绍。<br />让 AI 投委会帮你把问题想得再透一点。</view
-      ><button class="primary lime" @click="uni.reLaunch({ url: '/pages/pitch/index' })">
-        评估我的项目 ↗</button
+      ><button class="primary lime" @click="openReviewEntry()">
+        评审我的项目 ↗</button
       ><button class="example-link" @click="openReport(createDemoReport())">
         先看示例报告 →
       </button></view
@@ -77,7 +99,8 @@ function remove(id: string) {
     <view v-for="report in reports" :key="report.id" class="history-card surface"
       ><button
         class="history-open"
-        @click="uni.navigateTo({ url: `/pages/report/index?id=${encodeURIComponent(report.id)}` })"
+        :aria-label="`查看${report.projectName}的完整报告`"
+        @click="viewReport(report.id)"
       >
         <view class="history-card-top"
           ><view class="tag-list"
@@ -98,7 +121,7 @@ function remove(id: string) {
           publicDiagnosticSummary(report).counts
         }}</text></button
       ><view class="history-card-bottom"
-        ><text>查看完整评估 ↗</text><button @click="remove(report.id)">删除</button></view
+        ><button class="history-view" @click="viewReport(report.id)">查看完整报告 →</button><button class="history-reassess" @click="openReviewEntry({ report, industry: report.industry, round: report.round })">{{ report.mode === 'demo' ? '评审我的项目' : '补证再评' }} ↗</button><button class="history-delete" :aria-label="`删除${report.projectName}的报告`" @click="remove(report.id)">删除</button></view
       ></view
     >
     <view class="notice local-note"
@@ -120,17 +143,17 @@ function remove(id: string) {
 .history-diagnostics {
   display: block;
   color: #8a775f;
-  font-size: 10px;
+  font-size: 12px;
   margin-top: 12px;
 }
 .history-heading {
   margin: 4px 0 25px;
 }
 .history-heading .eyebrow {
-  font-size: 9px;
+  font-size: 12px;
 }
 .history-title {
-  font-size: 29px;
+  font-size: 27px;
   font-weight: 800;
   line-height: 1.6;
   letter-spacing: -1px;
@@ -139,13 +162,19 @@ function remove(id: string) {
 .history-summary {
   display: flex;
   justify-content: space-between;
-  font-size: 10px;
-  color: #93a080;
+  font-size: 12px;
+  color: #68775e;
   margin-bottom: 12px;
+  align-items: center;
 }
 .history-summary button {
-  color: #9fa88e;
-  font-size: 10px;
+  color: #68775e;
+  font-size: 12px;
+  min-height: 44px;
+  padding: 8px 0 8px 16px;
+}
+.new-evaluation {
+  margin-bottom: 16px;
 }
 .history-card {
   padding: 17px;
@@ -160,14 +189,16 @@ function remove(id: string) {
   align-items: center;
   justify-content: space-between;
   gap: 5px;
+  flex-wrap: wrap;
 }
 .history-card-top .pill {
-  font-size: 8px;
+  font-size: 12px;
   padding: 2px 7px;
 }
 .history-date {
-  font-size: 9px;
-  color: #a1ab94;
+  font-size: 12px;
+  color: #6a785f;
+  margin-top: 4px;
 }
 .history-card-main {
   display: flex;
@@ -184,8 +215,8 @@ function remove(id: string) {
 }
 .history-verdict {
   display: block;
-  font-size: 9px;
-  color: #91a07f;
+  font-size: 12px;
+  color: #607551;
   margin-top: 5px;
 }
 .history-score {
@@ -194,31 +225,40 @@ function remove(id: string) {
   white-space: nowrap;
 }
 .history-score text {
-  font-size: 10px;
-  color: #b4bda8;
+  font-size: 12px;
+  color: #718064;
   margin-left: 4px;
 }
 .history-quote {
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.9;
-  color: #7d8e6d;
+  color: #5b7051;
 }
 .history-card-bottom {
   display: flex;
   justify-content: space-between;
   border-top: 1px solid #eef0e7;
   margin-top: 12px;
-  padding-top: 11px;
+  padding-top: 4px;
   color: #819a66;
-  font-size: 9px;
+  font-size: 12px;
 }
 .history-card-bottom button {
-  font-size: 9px;
-  color: #aab39d;
+  font-size: 12px;
+  color: #8c5140;
+  min-height: 44px;
+  min-width: 56px;
+  padding: 10px 0;
+}
+.history-card-bottom .history-view {
+  color: #2f684e;
+  text-align: left;
+  flex: 1;
+  font-weight: 600;
 }
 .local-note {
   margin-top: 24px;
-  font-size: 10px;
+  font-size: 12px;
 }
 .empty-state {
   padding: 18px 0 30px;
@@ -266,11 +306,15 @@ function remove(id: string) {
   font-size: 19px;
 }
 .empty-description {
-  font-size: 12px;
+  font-size: 14px;
 }
 .example-link {
-  font-size: 11px;
+  font-size: 12px;
   color: #7b965f;
-  padding: 17px 0 0;
+  padding: 17px 0 8px;
+  min-height: 48px;
 }
+.history-card-bottom { flex-wrap: wrap; gap: 4px 12px; }
+.history-card-bottom .history-reassess { color: #2f684e; min-height: 44px; padding: 10px 0; }
+@media(max-width:360px) { .history-card-bottom .history-view { flex: 1 1 100%; } .history-card-bottom .history-reassess { flex: 1; text-align: left; } }
 </style>

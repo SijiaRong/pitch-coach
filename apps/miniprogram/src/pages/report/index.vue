@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue';
-import { onLoad, onShareAppMessage, onShareTimeline } from '@dcloudio/uni-app';
+import { onLoad, onShow, onShareAppMessage, onShareTimeline } from '@dcloudio/uni-app';
 import {
   INVESTORS,
   VOTE_LABELS,
@@ -14,6 +14,12 @@ import type { EvaluationReport } from '@pitchcoach/shared';
 import PageHeader from '@/components/PageHeader.vue';
 import InvestorAvatar from '@/components/InvestorAvatar.vue';
 import RiskDiagnosis from '@/components/RiskDiagnosis.vue';
+import ReviewEntryCard from '@/components/ReviewEntryCard.vue';
+import { useReviewOffer } from '@/lib/review-offer';
+import { openReviewEntry } from '@/lib/review-entry';
+import { friendShareMessage, timelineShareMessage, parseShareEntry, sharePath, aboutPath } from '@/lib/share-entry';
+const { state: offerState, offer, load: loadOffer } = useReviewOffer();
+onShow(() => { void loadOffer(); });
 import { findReport } from '@/lib/storage';
 import { drawPoster, savePoster, POSTER_CANVAS_ID } from '@/lib/poster';
 import { sharePoster } from '@/lib/share';
@@ -26,6 +32,8 @@ const posterOpen = ref(false);
 const posterPath = ref('');
 const anonymous = ref(true);
 const posterBusy = ref(false);
+const saveBusy = ref(false);
+const albumPermissionDenied = ref(false);
 const posterError = ref('');
 const shareHint = ref('在微信图片分享菜单中选择“朋友圈”，发布前仍可确认。');
 const shareBusy = ref(false);
@@ -34,59 +42,100 @@ const diagnosticSummary = computed(() =>
 );
 const industry = computed(() => (report.value ? getIndustry(report.value.industry) : undefined));
 const roundName = computed(() => getRound(report.value?.round || 'angel').name);
+const firstAction = computed(() => report.value?.actions[0]);
 
 onLoad((options) => {
-  if (options?.from === 'timeline' && !options.id) {
-    uni.reLaunch({ url: '/pages/index/index' });
+  if (options?.from !== undefined) {
+    const safe = parseShareEntry(options);
+    uni.reLaunch({ url: safe.from ? sharePath(safe.from, safe) : '/pages/index/index' });
     return;
   }
   if (options?.id) report.value = findReport(options.id);
 });
-onShareAppMessage(() => ({
-  title: '你的项目，敢让 AI 投委会看一眼吗？',
-  path: '/pages/index/index',
-}));
-onShareTimeline(() => ({ title: '先被 AI 问倒，再去见投资人。', query: 'from=timeline' }));
+onShareAppMessage(() => friendShareMessage(report.value));
+onShareTimeline(() => timelineShareMessage(report.value));
+function toolShareFallback() {
+  uni.showModal({ title: '在微信中发给朋友试试', content: '浏览器无法直接发送小程序卡片。请在微信小程序中点击“发给朋友试试”，朋友只会打开首页，不会收到你的完整报告或BP。', showCancel: false, confirmText: '知道了' });
+}
 
 async function makePoster() {
   if (!report.value) return;
   posterOpen.value = true;
+  anonymous.value = true;
+  if (posterBusy.value) {
+    posterPath.value = '';
+    return;
+  }
+  await renderPoster();
+}
+async function renderPoster() {
+  if (!report.value || posterBusy.value) return;
   posterBusy.value = true;
   posterError.value = '';
+  albumPermissionDenied.value = false;
   shareHint.value = '在微信图片分享菜单中选择“朋友圈”，发布前仍可确认。';
   posterPath.value = '';
+  const drawingAnonymous = anonymous.value;
   await nextTick();
   try {
-    posterPath.value = await drawPoster(report.value, anonymous.value);
+    const path = await drawPoster(report.value, drawingAnonymous);
+    if (drawingAnonymous === anonymous.value) posterPath.value = path;
   } catch (cause) {
     posterError.value = cause instanceof Error ? cause.message : '海报生成失败';
   } finally {
     posterBusy.value = false;
+    if (drawingAnonymous !== anonymous.value && posterOpen.value) await renderPoster();
   }
 }
 async function toggleAnonymous() {
+  if (posterBusy.value || saveBusy.value || shareBusy.value) return;
   anonymous.value = !anonymous.value;
-  await makePoster();
+  await renderPoster();
 }
 async function save() {
-  if (!posterPath.value) return;
+  if (!posterPath.value || saveBusy.value || shareBusy.value) return;
+  saveBusy.value = true;
+  posterError.value = '';
+  albumPermissionDenied.value = false;
   try {
     await savePoster(posterPath.value);
     uni.showToast({ title: '海报已保存', icon: 'success' });
-  } catch (cause) {
-    posterError.value = cause instanceof Error ? cause.message : '保存失败';
+  } catch {
+    posterError.value = '海报尚未保存，可以重试或点开大图后长按保存。';
+    // #ifdef MP-WEIXIN
+    uni.getSetting({
+      success: ({ authSetting }) => {
+        albumPermissionDenied.value = authSetting['scope.writePhotosAlbum'] === false;
+        if (albumPermissionDenied.value)
+          posterError.value = '微信尚未获得保存图片权限。可前往设置开启，再点击保存。';
+      },
+    });
+    // #endif
+  } finally {
+    saveBusy.value = false;
   }
 }
+function openAlbumSettings() {
+  uni.openSetting({
+    success: ({ authSetting }) => {
+      albumPermissionDenied.value = authSetting['scope.writePhotosAlbum'] !== true;
+      if (!albumPermissionDenied.value) {
+        posterError.value = '';
+        shareHint.value = '相册权限已开启，可以点击“保存图片到本地”。';
+      }
+    },
+  });
+}
 async function share() {
-  if (!posterPath.value || shareBusy.value) return;
+  if (!posterPath.value || shareBusy.value || saveBusy.value) return;
   shareBusy.value = true;
   posterError.value = '';
   try {
-    const result = await sharePoster(posterPath.value);
+    const result = await sharePoster(posterPath.value, report.value);
     if (result === 'preview')
       shareHint.value =
         '当前环境无法打开微信分享菜单，已打开大图预览。请在手机微信中分享；也可使用下方保存图片。';
-    if (result === 'opened') shareHint.value = '请选择“朋友圈”。若菜单没有此项，请更新微信后重试。';
+    if (result === 'opened') shareHint.value = '分享菜单已打开，尚不代表发布成功；请在微信中自行选择并确认。';
     if (result === 'cancelled') shareHint.value = '已取消分享，海报仍在这里。';
   } catch (cause) {
     posterError.value = cause instanceof Error ? cause.message : '分享菜单暂不可用';
@@ -103,10 +152,12 @@ function copyActions() {
     data: `${report.value.projectName} · 融资改进清单\n${content}\n\n${report.value.mode === 'demo' ? '虚构演示，非真实项目评估。' : 'AI 生成内容，请核验。'}\n${report.value.disclaimer}`,
   });
 }
-const retry = () =>
-  uni.reLaunch({
-    url: `/pages/pitch/index?industry=${report.value?.industry || 'ai'}&round=${report.value?.round || 'angel'}${report.value?.preferences ? `&preferences=${report.value.preferences.join(',')}` : ''}`,
-  });
+async function showActions() {
+  tab.value = 'actions';
+  await nextTick();
+  uni.pageScrollTo({ selector: '#report-details', duration: 220 });
+}
+const retry = () => openReviewEntry({ report: report.value, industry: report.value?.industry, round: report.value?.round });
 </script>
 
 <template>
@@ -122,6 +173,7 @@ const retry = () =>
       <view v-if="report.mode === 'demo'" class="demo-notice"
         >本报告为虚构项目与固定演示评分，未调用 AI。</view
       >
+      <ReviewEntryCard v-if="report.mode === 'demo'" :report="report" :state="offerState" :offer="offer" />
       <view class="report-name">{{ report.projectName }}</view
       ><view class="report-meta"
         ><text>{{ industry?.name }}</text
@@ -163,27 +215,28 @@ const retry = () =>
           >旧报告尚未完成专项风险检查，建议重新评估。</text
         >
       </view>
-      <button class="secondary conclusion-share" @click="makePoster">
-        把这份诊断分享到朋友圈 ↗
-      </button>
-      <view v-if="report.missingInvestors.length" class="notice partial-notice"
-        >部分投资人未完成审阅：{{
-          report.missingInvestors.map((id) => INVESTORS[id]?.name || id).join('、')
-        }}。当前结果为部分评审，建议稍后重新评估。</view
-      >
+      <view v-if="report.missingInvestors.length" class="notice partial-notice">已展示完成的 {{ report.investors.length }} / 3 位结果。{{ report.mode === 'live' ? '本次已计1次；可先使用现有建议补证，新一轮按页面规则计次。' : '这是固定虚构示例；真实评审会按实际完成展示。' }}</view>
       <text class="score-explainer"
         >分数只计算有原文证据的维度，不等于项目成功概率。资料不足的维度不记为零分。</text
       >
 
-      <view class="report-tabs"
+      <view v-if="firstAction" class="next-action surface">
+        <text class="next-action-label">先做这一件事</text>
+        <view class="next-action-title">{{ firstAction.dimension }}</view>
+        <text class="next-action-task">{{ firstAction.task }}</text>
+        <button class="next-action-link" @click="showActions">查看完整改进清单 →</button>
+      </view>
+
+      <view id="report-details" class="report-tabs"
         ><button
           v-for="item in [
             { id: 'risks', label: '风险诊断' },
             { id: 'overview', label: '八维拆解' },
-            { id: 'committee', label: '投委会发言' },
-            { id: 'actions', label: '下一步做什么' },
+            { id: 'committee', label: '评审追问' },
+            { id: 'actions', label: '改进清单' },
           ]"
           :key="item.id"
+          :aria-label="`${item.label}${tab === item.id ? '，已选择' : ''}`"
           :class="{ active: tab === item.id }"
           @click="tab = item.id"
         >
@@ -245,14 +298,14 @@ const retry = () =>
             ></view
           ><view class="investor-quote">“{{ review.oneLiner }}”</view
           ><text class="investor-thesis">{{ review.thesis }}</text
-          ><text class="model-note">模型：{{ review.model }} · 证据覆盖 {{ review.coverage }}%</text
+          ><text class="model-note">证据覆盖 {{ review.coverage }}% · 模型 {{ review.model }}</text
           ><button
             class="investor-more"
             @click="
               expandedInvestor = expandedInvestor === review.investorId ? '' : review.investorId
             "
           >
-            <text>他还想问你的问题</text
+            <text>展开追问与待核验风险</text
             ><text>{{ expandedInvestor === review.investorId ? '−' : '+' }}</text></button
           ><view v-if="expandedInvestor === review.investorId" class="investor-questions"
             ><view v-for="(question, index) in review.questions" :key="question" class="question"
@@ -277,54 +330,74 @@ const retry = () =>
             ><text class="action-task">{{ action.task }}</text></view
           ></view
         ><button class="secondary" @click="copyActions">复制我的改进清单 ↗</button
-        ><button class="retry-link" @click="retry">补齐资料，再评一次 →</button></view
+        ></view
       >
 
       <view class="report-disclaimer">{{ report.disclaimer }}</view>
-      <button class="primary lime poster-cta" @click="makePoster">
-        <text>把这份诊断分享到朋友圈</text><text>↗</text></button
-      ><text class="share-note">先预览，再分享。默认隐藏项目名称。</text
-      ><button class="back-home" @click="uni.reLaunch({ url: '/pages/index/index' })">
-        ← 返回融资教练
+      <view v-if="report.mode === 'live' && tab !== 'actions'" class="actions followthrough-actions">
+        <view class="action-title">先用好这一轮改进清单</view>
+        <text class="caption">补齐这些证据后，再决定是否需要新一轮评审。</text>
+        <view v-for="action in report.actions" :key="action.priority" class="action-card"><text class="action-number mono">0{{ action.priority }}</text><view><view class="action-dimension">{{ action.dimension }}</view><text class="action-task">{{ action.task }}</text></view></view>
+        <button class="secondary" @click="copyActions">复制我的改进清单 ↗</button>
+      </view>
+      <ReviewEntryCard :report="report" :state="offerState" :offer="offer" />
+      <view class="share-section"><view class="share-section-title">觉得有用，再分享</view><text class="share-note">完全自愿；不分享也可查看和复制全部报告。</text>
+        <button class="secondary share-option" @click="makePoster">预览我的脱敏海报 ↗</button>
+        <!-- #ifdef MP-WEIXIN -->
+        <button class="secondary share-option" open-type="share">发给朋友试试 ↗</button>
+        <!-- #endif -->
+        <!-- #ifndef MP-WEIXIN -->
+        <button class="secondary share-option" @click="toolShareFallback">发给朋友试试 ↗</button>
+        <!-- #endif -->
+        <text class="share-note">朋友会从首页了解工具，练习自己的项目。分享者的报告与BP不会公开。</text>
+        <button class="share-rules" @click="uni.navigateTo({ url: aboutPath('sharing') })">分享会展示哪些内容？ →</button>
+      </view>
+      <button class="back-home" @click="uni.reLaunch({ url: '/pages/index/index' })">
+        ← 返回AI投了么
       </button>
 
-      <view v-if="posterOpen" class="poster-overlay"
-        ><view class="poster-dialog"
+      <canvas
+        :id="POSTER_CANVAS_ID"
+        :canvas-id="POSTER_CANVAS_ID"
+        class="share-canvas"
+        :disable-scroll="true"
+      />
+      <view v-if="posterOpen" class="poster-overlay" @click="posterOpen = false"
+        ><view class="poster-dialog" @click.stop
           ><view class="poster-dialog-heading"
-            ><text>给朋友圈，一份真话。</text
-            ><button :disabled="posterBusy" aria-label="关闭海报" @click="posterOpen = false">
+            ><text>分享前，先确认内容</text
+            ><button aria-label="关闭海报" @click="posterOpen = false">
               ×
             </button></view
-          ><text class="poster-caption">红橙旗、死亡预言、未验假设，一起带上。确认后分享。</text
+          ><text class="poster-caption">这里只生成预览，分享需在微信中再次确认。</text
           ><view class="poster-preview"
-            ><canvas
-              :id="POSTER_CANVAS_ID"
-              :canvas-id="POSTER_CANVAS_ID"
-              class="share-canvas"
-              :disable-scroll="true"
-            /><image
+            ><image
               v-if="posterPath"
               :src="posterPath"
               class="poster-image"
               mode="aspectFit"
               @click="uni.previewImage({ urls: [posterPath] })"
-            /><view v-if="posterBusy" class="poster-working">正在生成海报…</view></view
-          ><button class="anonymous-toggle" :disabled="posterBusy" @click="toggleAnonymous">
+            /><view v-if="posterBusy" class="poster-working">正在生成海报…</view>
+            <view v-else-if="!posterPath" class="poster-working">海报暂未生成，请重试</view></view
+          ><button class="anonymous-toggle" :disabled="posterBusy || saveBusy || shareBusy" @click="toggleAnonymous">
             <text>{{ anonymous ? '☑' : '☐' }} 隐藏项目名称</text
             ><text>{{ anonymous ? '已匿名' : '显示原名称' }}</text></button
-          ><view v-if="posterError" class="error-box">{{ posterError }}</view
-          ><button
+          ><text class="privacy-reminder">{{ anonymous ? '项目名称已隐藏，行业、评分与风险概况仍会展示。' : '当前会展示项目名称，请确认适合公开。' }}</text>
+          <view v-if="posterError" class="error-box">{{ posterError }}</view>
+          <button v-if="!posterBusy && !posterPath" class="secondary poster-retry" @click="renderPoster">重新生成海报</button>
+          <button v-if="albumPermissionDenied" class="secondary poster-retry" @click="openAlbumSettings">打开相册权限设置</button>
+          <button
             class="primary lime"
-            :disabled="posterBusy || shareBusy || !posterPath"
+            :disabled="posterBusy || shareBusy || saveBusy || !posterPath"
             @click="share"
           >
-            {{ shareBusy ? '正在打开分享…' : '分享到朋友圈 ↗' }}</button
+            {{ shareBusy ? '正在打开分享…' : '打开微信图片分享菜单 ↗' }}</button
           ><text class="poster-caption bottom">{{ shareHint }}</text>
-          <button class="save-secondary" :disabled="posterBusy || !posterPath" @click="save">
-            保存图片到本地
+          <button class="save-secondary" :disabled="posterBusy || saveBusy || shareBusy || !posterPath" @click="save">
+            {{ saveBusy ? '正在保存…' : '保存图片到本地' }}
           </button>
           <text class="poster-caption bottom"
-            >海报仅含风险类别与条件性情景；BP 原文、客户与金额不进入画面。</text
+            >海报仅含风险类别与条件性情景；BP 原文、客户与金额不进入画面。微信搜索入口在小程序正式发布后生效。</text
           >
         </view></view
       >
@@ -350,7 +423,7 @@ const retry = () =>
   background: #edf1e3;
   border-radius: 6px;
   padding: 4px 8px;
-  font-size: 9px;
+  font-size: 12px;
 }
 .report-topline {
   display: flex;
@@ -359,14 +432,14 @@ const retry = () =>
   gap: 8px;
 }
 .report-topline .eyebrow {
-  font-size: 8px;
+  font-size: 12px;
 }
 .report-topline .pill {
-  font-size: 8px;
+  font-size: 12px;
 }
 .demo-notice {
-  color: #a3814e;
-  font-size: 9px;
+  color: #88652e;
+  font-size: 12px;
   margin: 13px 0 0;
   background: #f4eedd;
   padding: 7px 10px;
@@ -381,9 +454,10 @@ const retry = () =>
 }
 .report-meta {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
-  color: #8f9b80;
-  font-size: 10px;
+  color: #68785e;
+  font-size: 12px;
   margin: 4px 0 19px;
 }
 .score-card {
@@ -396,9 +470,10 @@ const retry = () =>
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
 }
 .score-number {
-  font-size: 76px;
+  font-size: 64px;
   font-weight: 500;
   line-height: 1.3;
   letter-spacing: -6px;
@@ -415,8 +490,8 @@ const retry = () =>
   padding: 6px 10px;
   font-size: 14px;
   font-weight: 600;
-  transform: rotate(7deg);
-  letter-spacing: 2px;
+  text-align: center;
+  line-height: 1.6;
 }
 .verdict-stamp.pass {
   color: #e5c39e;
@@ -427,8 +502,10 @@ const retry = () =>
 }
 .score-bottom {
   display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
   justify-content: space-between;
-  font-size: 8px;
+  font-size: 12px;
   color: #96ad91;
   padding-top: 8px;
   border-top: 1px solid #ffffff12;
@@ -457,14 +534,14 @@ const retry = () =>
 }
 .report-summary {
   display: block;
-  font-size: 11px;
-  color: #7f8b72;
+  font-size: 14px;
+  color: #596c53;
   line-height: 1.9;
 }
 .score-explainer {
   display: block;
-  color: #a2aa95;
-  font-size: 9px;
+  color: #68745f;
+  font-size: 12px;
   line-height: 1.8;
   margin-top: 10px;
 }
@@ -475,12 +552,15 @@ const retry = () =>
   display: flex;
   border-bottom: 1px solid #dfe5d4;
   margin: 27px 0 15px;
-  gap: 15px;
+  gap: 5px;
+  scroll-margin-top: 18px;
 }
 .report-tabs button {
-  font-size: 12px;
-  color: #96a084;
-  padding: 10px 0;
+  font-size: 13px;
+  color: #68775e;
+  padding: 14px 0;
+  min-height: 48px;
+  white-space: nowrap;
   position: relative;
   flex: 1;
   text-align: center;
@@ -499,7 +579,7 @@ const retry = () =>
   right: 10%;
 }
 .dimension-tip {
-  font-size: 9px;
+  font-size: 12px;
   margin: 0 0 10px;
 }
 .dimension-row {
@@ -516,8 +596,8 @@ const retry = () =>
 }
 .dimension-weight {
   display: block;
-  color: #a1ab92;
-  font-size: 8px;
+  color: #718063;
+  font-size: 12px;
   margin-top: 2px;
 }
 .dimension-bar {
@@ -544,8 +624,8 @@ const retry = () =>
 }
 .dimension-score.missing {
   font-family: inherit;
-  font-size: 10px;
-  color: #a7ae99;
+  font-size: 12px;
+  color: #68775e;
 }
 .dimension-chevron {
   color: #98a487;
@@ -561,7 +641,7 @@ const retry = () =>
 .detail-label {
   display: block;
   color: #6b8257;
-  font-size: 9px;
+  font-size: 12px;
   margin: 9px 0 5px;
   font-weight: 700;
 }
@@ -570,21 +650,21 @@ const retry = () =>
 }
 .detail-text {
   display: block;
-  color: #7c8a6e;
-  font-size: 11px;
+  color: #55684e;
+  font-size: 14px;
   line-height: 1.9;
 }
 .evidence {
   display: block;
-  font-size: 10px;
-  color: #97a089;
+  font-size: 12px;
+  color: #65745b;
   line-height: 1.9;
   border-left: 2px solid #d1dcbf;
   padding-left: 9px;
 }
 .weight-note {
-  font-size: 9px;
-  color: #9da68e;
+  font-size: 12px;
+  color: #68775e;
   line-height: 1.8;
   border-top: 1px solid #e2e6d7;
   padding-top: 13px;
@@ -601,6 +681,7 @@ const retry = () =>
 }
 .investor-info {
   flex: 1;
+  min-width: 0;
 }
 .investor-name {
   display: block;
@@ -608,16 +689,17 @@ const retry = () =>
   font-weight: 700;
 }
 .fiction-tag {
-  font-size: 8px;
+  font-size: 12px;
   font-weight: 400;
-  color: #a3ab96;
+  color: #718063;
   margin-left: 3px;
 }
 .investor-role {
   display: block;
-  font-size: 9px;
-  color: #95a086;
+  font-size: 12px;
+  color: #68775e;
   margin-top: 4px;
+  overflow-wrap: anywhere;
 }
 .investor-score {
   display: flex;
@@ -629,8 +711,8 @@ const retry = () =>
   color: #618048;
 }
 .investor-vote {
-  font-size: 8px;
-  color: #98a087;
+  font-size: 12px;
+  color: #68775e;
 }
 .investor-quote {
   font-size: 16px;
@@ -640,14 +722,14 @@ const retry = () =>
 }
 .investor-thesis {
   display: block;
-  font-size: 11px;
+  font-size: 14px;
   line-height: 1.9;
-  color: #89957a;
+  color: #56694f;
 }
 .model-note {
   display: block;
-  font-size: 8px;
-  color: #a3ae94;
+  font-size: 12px;
+  color: #718063;
   margin-top: 12px;
 }
 .investor-more {
@@ -655,9 +737,11 @@ const retry = () =>
   justify-content: space-between;
   width: 100%;
   margin-top: 13px;
-  padding-top: 12px;
+  min-height: 48px;
+  align-items: center;
+  padding-top: 10px;
   border-top: 1px solid #edf0e7;
-  font-size: 10px;
+  font-size: 12px;
   color: #728a5b;
 }
 .investor-questions {
@@ -666,22 +750,22 @@ const retry = () =>
 .question {
   display: flex;
   gap: 8px;
-  font-size: 11px;
-  color: #869376;
+  font-size: 14px;
+  color: #56694f;
   line-height: 1.9;
   margin-bottom: 8px;
 }
 .question-index {
-  color: #b1bca0;
-  font-size: 9px;
+  color: #718063;
+  font-size: 12px;
   padding-top: 2px;
 }
 .risk-label {
   margin-top: 15px;
 }
 .risk-item {
-  font-size: 10px;
-  color: #a59377;
+  font-size: 12px;
+  color: #806747;
   line-height: 1.9;
   margin-bottom: 5px;
 }
@@ -711,25 +795,20 @@ const retry = () =>
 }
 .action-task {
   display: block;
-  font-size: 11px;
-  color: #89967b;
+  font-size: 14px;
+  color: #56694f;
   line-height: 1.9;
 }
 .actions .secondary {
   margin-top: 22px;
 }
-.retry-link {
-  color: #69884d;
-  margin: 15px auto 0;
-  padding: 8px;
-  font-size: 12px;
-}
+
 .report-disclaimer {
   margin-top: 26px;
   background: #edf0e4;
-  color: #96a185;
+  color: #68775e;
   border-radius: 10px;
-  font-size: 9px;
+  font-size: 12px;
   padding: 13px;
   line-height: 1.9;
 }
@@ -740,15 +819,16 @@ const retry = () =>
 .share-note {
   display: block;
   text-align: center;
-  font-size: 9px;
-  color: #a0aa8e;
+  font-size: 12px;
+  color: #68775e;
   margin-top: 10px;
 }
 .back-home {
   margin: 20px auto 0;
-  font-size: 11px;
+  font-size: 12px;
   color: #859774;
   padding: 8px;
+  min-height: 44px;
 }
 .poster-overlay {
   position: fixed;
@@ -759,7 +839,7 @@ const retry = () =>
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  padding: max(24px, env(safe-area-inset-top)) 18px 24px;
+  padding: max(24px, env(safe-area-inset-top)) 18px max(24px, env(safe-area-inset-bottom));
 }
 .poster-dialog {
   width: 100%;
@@ -780,8 +860,8 @@ const retry = () =>
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   font-size: 23px;
   line-height: 1;
 }
@@ -792,17 +872,18 @@ const retry = () =>
 /* #endif */
 .poster-caption {
   display: block;
-  color: #98a189;
-  font-size: 9px;
+  color: #64745b;
+  font-size: 12px;
   margin-top: 6px;
+  line-height: 1.8;
 }
 .poster-caption.bottom {
   text-align: center;
   margin-top: 10px;
 }
 .poster-preview {
-  width: 225px;
-  height: 510px;
+  width: 178px;
+  height: 437px;
   max-width: 100%;
   margin: 14px auto 0;
   position: relative;
@@ -811,7 +892,7 @@ const retry = () =>
 }
 .share-canvas {
   width: 300px;
-  height: 680px;
+  height: 736px;
   position: fixed;
   left: -1000px;
   top: 0;
@@ -836,13 +917,15 @@ const retry = () =>
   display: flex;
   justify-content: space-between;
   width: 100%;
-  font-size: 11px;
+  font-size: 12px;
   color: #728a59;
   padding: 14px 0;
+  min-height: 48px;
+  gap: 10px;
 }
 .anonymous-toggle text:last-child {
-  font-size: 9px;
-  color: #a5ad95;
+  font-size: 12px;
+  color: #68775e;
 }
 .diagnosis-conclusion {
   padding: 14px 15px;
@@ -857,23 +940,74 @@ const retry = () =>
 .diagnosis-counts {
   display: block;
   color: #536c49;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
 }
 .decision-reason {
   display: block;
-  font-size: 10px;
-  color: #7d866f;
+  font-size: 12px;
+  color: #68705c;
   line-height: 1.9;
   margin-top: 6px;
 }
-.conclusion-share {
-  font-size: 11px;
-}
 .save-secondary {
   width: 100%;
-  font-size: 11px;
+  font-size: 12px;
   color: #789061;
-  padding: 13px 0 3px;
+  padding: 13px 0;
+  min-height: 48px;
 }
+.next-action {
+  margin-top: 22px;
+  border-color: #d4dfba;
+  background: #eff4e3;
+}
+.next-action-label {
+  color: #4f6b40;
+  font-size: 12px;
+  font-weight: 700;
+}
+.next-action-title {
+  font-size: 17px;
+  font-weight: 700;
+  margin: 8px 0;
+}
+.next-action-task {
+  display: block;
+  color: #53684b;
+  line-height: 1.9;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.next-action-link {
+  color: #2f684e;
+  font-size: 13px;
+  min-height: 44px;
+  text-align: left;
+  padding-top: 14px;
+}
+.privacy-reminder {
+  display: block;
+  margin-bottom: 14px;
+  color: #64745b;
+  font-size: 12px;
+  line-height: 1.8;
+}
+.poster-retry {
+  margin-bottom: 12px;
+}
+@media (max-width: 360px) {
+  .score-card { padding: 16px; }
+  .score-number { font-size: 54px; letter-spacing: -3px; }
+  .score-unit { margin-left: 5px; }
+  .verdict-stamp { padding: 5px 7px; font-size: 13px; }
+  .investor-heading { flex-wrap: wrap; }
+  .investor-score { min-width: 40px; }
+}
+.report-page .share-section { border-top: 1px solid #dfe5d7; padding-top: 24px; margin-top: 24px; }
+.share-section-title { font-size: 18px; font-weight: 750; }
+.report-page .share-section .share-option { margin-top: 12px; }
+.report-page .share-section .share-rules { min-height: 44px; width: 100%; color: #2f684e; text-align: left; font-size: 12px; }
+.poster-dialog { max-height: calc(100vh - 48px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); overflow-y: auto; }
+.poster-dialog-heading { position: sticky; top: -17px; background: #f7f7f0; z-index: 2; padding: 3px 0; }
 </style>
