@@ -1,0 +1,30 @@
+{
+  "pages": [
+    {
+      "path": "pages/index/index",
+      "style": {
+        "navigationBarTitleText": "融资教练",
+        "enableShareAppMessage": true,
+        "enableShareTimeline": true
+      }
+    },
+    { "path": "pages/pitch/index", "style": { "navigationBarTitleText": "提交项目" } },
+    {
+      "path": "pages/report/index",
+      "style": {
+        "navigationBarTitleText": "项目评估",
+        "enableShareAppMessage": true,
+        "enableShareTimeline": true
+      }
+    },
+    { "path": "pages/history/index", "style": { "navigationBarTitleText": "我的报告" } },
+    { "path": "pages/investors/index", "style": { "navigationBarTitleText": "AI 投委会" } },
+    { "path": "pages/about/index", "style": { "navigationBarTitleText": "关于与隐私" } }
+  ],
+  "globalStyle": {
+    "navigationStyle": "custom",
+    "navigationBarTextStyle": "black",
+    "navigationBarBackgroundColor": "#f7f7f0",
+    "backgroundColor": "#f7f7f0"
+  }
+}

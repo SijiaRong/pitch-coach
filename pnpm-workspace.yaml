@@ -1,0 +1,10 @@
+packages:
+  - apps/*
+  - packages/*
+
+allowBuilds:
+  esbuild: true
+  '@swc/core': true
+  '@napi-rs/canvas': true
+  core-js: false
+  core-js-pure: false

@@ -1,0 +1,29 @@
+{
+  "name": "pitch-coach",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "PitchCoach · 融资教练 — 先被 AI 问倒，再去见投资人。",
+  "license": "MIT",
+  "packageManager": "pnpm@11.25.0",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @pitchcoach/api --filter @pitchcoach/miniprogram dev",
+    "dev:api": "pnpm --filter @pitchcoach/api dev",
+    "dev:weixin": "pnpm --filter @pitchcoach/miniprogram dev:weixin",
+    "build": "pnpm build:api && pnpm build:h5 && pnpm build:weixin",
+    "build:api": "pnpm --filter @pitchcoach/api build",
+    "build:h5": "pnpm --filter @pitchcoach/miniprogram build",
+    "build:weixin": "pnpm --filter @pitchcoach/miniprogram build:weixin",
+    "typecheck": "pnpm -r typecheck",
+    "test": "vitest run",
+    "check": "pnpm typecheck && pnpm test && pnpm build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.0"
+  }
+}
