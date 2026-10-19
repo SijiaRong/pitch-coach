@@ -1,4 +1,5 @@
 import { Worker } from 'node:worker_threads';
+import { fork } from 'node:child_process';
 import { extname } from 'node:path';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
@@ -21,28 +22,38 @@ export async function extractDocument(
   try {
     return await new Promise((resolve, reject) => {
       const isSource = import.meta.url.endsWith('.ts');
-      const worker = new Worker(
-        new URL(isSource ? './parse-worker.ts' : './parse-worker.js', import.meta.url),
-        {
+      const entry = new URL(isSource ? './parse-worker.ts' : './parse-worker.js', import.meta.url);
+      const execArgv = isSource
+        ? ['--import', pathToFileURL(createRequire(import.meta.url).resolve('tsx')).href]
+        : [];
+      // Native PDF canvas bindings are not safe to unload from a Windows worker thread.
+      // A bounded child process keeps that native lifetime outside the API process.
+      const child =
+        process.platform === 'win32' && extension === '.pdf'
+          ? fork(entry, {
+              execArgv: ['--max-old-space-size=256', ...execArgv],
+              serialization: 'advanced',
+              stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
+              windowsHide: true,
+            })
+          : undefined;
+      const worker =
+        child ||
+        new Worker(entry, {
           workerData: { buffer, extension },
-          ...(isSource
-            ? {
-                execArgv: [
-                  '--import',
-                  pathToFileURL(createRequire(import.meta.url).resolve('tsx')).href,
-                ],
-              }
-            : {}),
+          execArgv,
           resourceLimits: { maxOldGenerationSizeMb: 256 },
-        },
-      );
+        });
+      const terminate = () => (child ? child.kill() : (worker as Worker).terminate());
       const timer = setTimeout(() => {
-        void worker.terminate();
+        void terminate();
         reject(new PublicError(422, 'PARSE_TIMEOUT', '文件解析超时，请改用精简版 BP 或粘贴文字'));
       }, 12000);
+      let reported = false;
       worker.once('message', (result) => {
+        reported = true;
         clearTimeout(timer);
-        void worker.terminate();
+        // The parser closes its IPC port and exits after reporting a result.
         if (result.error) reject(new PublicError(422, 'PARSE_FAILED', result.error));
         else resolve(result);
       });
@@ -50,11 +61,12 @@ export async function extractDocument(
         clearTimeout(timer);
         reject(new PublicError(422, 'PARSE_FAILED', '无法解析该文件，请另存为 PDF 或粘贴文字'));
       });
-      worker.once('exit', (code) => {
+      worker.once('exit', () => {
         clearTimeout(timer);
-        if (code !== 0)
+        if (!reported)
           reject(new PublicError(422, 'PARSE_FAILED', '文件解析中断，请改用精简版资料'));
       });
+      child?.send({ buffer, extension });
     });
   } finally {
     active--;

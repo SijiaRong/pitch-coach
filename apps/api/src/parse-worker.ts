@@ -39,9 +39,9 @@ function collectText(value: unknown, output: string[], depth = 0) {
   }
 }
 
-async function parse() {
-  const buffer = Buffer.from(workerData.buffer);
-  const extension: string = workerData.extension;
+async function parse(data: { buffer: Uint8Array; extension: string }) {
+  const buffer = Buffer.from(data.buffer);
+  const extension = data.extension;
   let text = '';
   if (extension === '.txt' || extension === '.md')
     text = new TextDecoder('utf-8', { fatal: true }).decode(buffer);
@@ -105,14 +105,24 @@ async function parse() {
   return { text: text.slice(0, MAX_TEXT), truncated: text.length > MAX_TEXT };
 }
 
-parse()
-  .then((result) => parentPort?.postMessage(result))
-  .catch((error) => {
+async function run(data: { buffer: Uint8Array; extension: string }) {
+  let result: { text: string; truncated: boolean } | { error: string };
+  try {
+    result = await parse(data);
+  } catch (error) {
     const allowed =
       error instanceof Error && /文件|PDF|XML|文字|扫描|Office|UTF-8/.test(error.message);
-    parentPort?.postMessage({
+    result = {
       error: allowed
         ? String(error.message).slice(0, 160)
         : '文件无法解析，请另存为 PDF 或直接粘贴文字',
-    });
-  });
+    };
+  }
+  if (parentPort) {
+    parentPort.postMessage(result);
+    parentPort.close();
+  } else process.send?.(result, () => process.disconnect());
+}
+
+if (parentPort) void run(workerData);
+else process.once('message', (data: { buffer: Uint8Array; extension: string }) => void run(data));
