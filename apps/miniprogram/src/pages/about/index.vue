@@ -20,10 +20,14 @@ function copyRepo() {
       <text>DeepSeek 评估 · 报告保存在本机 · 同意可撤回</text>
       <view class="privacy-entry-actions">
         <button @click="uni.navigateTo({ url: '/pages/privacy/index' })">隐私保护指引 ↗</button>
-        <button @click="uni.navigateTo({ url: '/pages/privacy/index?section=terms' })">使用须知 ↗</button>
+        <button @click="uni.navigateTo({ url: '/pages/privacy/index?section=terms' })">
+          使用须知 ↗
+        </button>
       </view>
       <!-- #ifdef MP-WEIXIN -->
-      <button class="wechat-privacy" @click="openWechatPrivacyContract">微信平台隐私保护指引 ↗</button>
+      <button class="wechat-privacy" @click="openWechatPrivacyContract">
+        微信平台隐私保护指引 ↗
+      </button>
       <!-- #endif -->
     </view>
     <view class="about-section"
@@ -57,15 +61,17 @@ function copyRepo() {
     <view class="about-section"
       ><view class="about-section-title">资料会去哪里</view
       ><text
-        >你选择并上传的 BP 文件仅发送至我们的后台提取文字；开始评估前，需要你单独同意将项目文字交给 DeepSeek。文件选择与相册保存使用微信按需授权，拒绝后仍可浏览示例。</text
+        >你选择并上传的 BP 文件仅发送至我们的后台提取文字；开始评估前，需要你单独同意将项目文字交给
+        DeepSeek。文件选择与相册保存使用微信按需授权，拒绝后仍可浏览示例。</text
       ><text
-        >原始文件与正文不写入应用数据库，不用于公开展示。评估过程中资料会存在后台内存中；任务完成后的报告缓存最多保留
+        >普通评估的原始文件与正文不写入应用数据库，不会自动公开。评估过程中资料会存在后台内存中；任务完成后的报告缓存最多保留
         10 分钟，客户端领取后会请求删除。错误日志不记录 BP、密钥或模型完整响应。</text
       ><text
-        >当前 AI 服务接收方为 DeepSeek。其处理规则与保存期限须结合服务条款及实际合作约定；请先脱敏，不要提交商业秘密或无权使用的资料。</text
+        >当前 AI 服务接收方为
+        DeepSeek。其处理规则与保存期限须结合服务条款及实际合作约定；请先脱敏，不要提交商业秘密或无权使用的资料。</text
       ><text
-        >完整报告保存在当前设备，最多 20
-        份，不跨设备同步。报告可能包含你的商业信息和原文摘录，请妥善保管。清理本机记录不会删除模型服务商可能保存的数据。</text
+        >报告默认保存在当前设备，最多 20
+        份。你单独确认公开后，完整评估及另行授权的解锁资料、联系人与订单会持久保存在后台，私密内容加密。清理本机记录不等于停止分享或删除后台及模型方记录。</text
       ></view
     >
     <view class="about-section"
@@ -73,8 +79,11 @@ function copyRepo() {
       ><text
         >分享海报由本机生成，默认隐藏项目名称，展示参考分、受控文案、风险类别与数量、条件性失败情景和维度摘要；不包含
         BP
-        原文摘录、详细追问或财务金额。请在预览后确认内容适合公开。分享小程序卡片或朋友圈入口只会打开首页，不会附带你的
-        BP 或完整报告。</text
+        原文摘录、详细追问或财务金额。你预览并确认公开完整评估后，可添加扫码入口，免费查看完整意见与摘录；这部分公开内容无需付费。未公开时入口只打开首页。</text
+      ><text
+        >投资人可付费访问你另行确认的完整资料正文及联系方式；围观者可自愿打赏并授权留下联系渠道。平台统一收款，按退款后的已核实实收逐笔收取
+        5%
+        服务费，渠道费用与结算另行对账。可在“我的公开项目与购买记录”停止新分享，已被复制或购买的资料无法追回。</text
       ><text
         >优先点击“分享到朋友圈”，再在微信图片分享菜单中选择朋友圈并确认发布。需要微信支持对应能力；模拟器、浏览器或旧版微信可能只支持预览。保存图片保留为次要选项，取消分享不会自动保存或发布。</text
       ></view
@@ -103,11 +112,34 @@ function copyRepo() {
   border-radius: 12px;
   background: #eaf0de;
 }
-.privacy-entry-title { font-size: 14px; font-weight: 700; }
-.privacy-entry > text { display: block; font-size: 11px; color: #5c714f; margin-top: 6px; line-height: 1.8; }
-.privacy-entry-actions { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 6px; }
-.privacy-entry-actions button, .wechat-privacy { min-height: 44px; padding: 10px 0; font-size: 12px; text-align: left; color: #2f684e; }
-.wechat-privacy { font-size: 11px; }
+.privacy-entry-title {
+  font-size: 14px;
+  font-weight: 700;
+}
+.privacy-entry > text {
+  display: block;
+  font-size: 11px;
+  color: #5c714f;
+  margin-top: 6px;
+  line-height: 1.8;
+}
+.privacy-entry-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin-top: 6px;
+}
+.privacy-entry-actions button,
+.wechat-privacy {
+  min-height: 44px;
+  padding: 10px 0;
+  font-size: 12px;
+  text-align: left;
+  color: #2f684e;
+}
+.wechat-privacy {
+  font-size: 11px;
+}
 .about-page > .eyebrow {
   font-size: 8px;
 }

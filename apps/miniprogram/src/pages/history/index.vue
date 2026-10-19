@@ -102,10 +102,15 @@ function remove(id: string) {
       ></view
     >
     <view class="notice local-note"
-      >报告仅保存在这台设备，最多保留最近 20
-      份。清理微信缓存、浏览器数据或卸载应用后，报告可能丢失。需要长期保留时，可保存海报与改进清单。</view
+      >本机最多保留最近 20
+      份报告，清理缓存或卸载后可能丢失。单独确认公开的项目及购买记录在后台保留；删除本机报告不会停止公开分享，请到下方管理。</view
     >
-    <button class="history-privacy" @click="uni.navigateTo({ url: '/pages/privacy/index?section=rights' })">隐私管理与使用说明 ↗</button>
+    <button
+      class="history-privacy"
+      @click="uni.navigateTo({ url: '/pages/privacy/index?section=rights' })"
+    >
+      隐私管理与使用说明 ↗
+    </button>
     <button class="history-commerce" @click="uni.navigateTo({ url: '/pages/commerce/index' })">
       我的公开项目与购买记录 ↗
     </button>

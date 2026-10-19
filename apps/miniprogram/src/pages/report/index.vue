@@ -16,12 +16,18 @@ import PageHeader from '@/components/PageHeader.vue';
 import InvestorAvatar from '@/components/InvestorAvatar.vue';
 import RiskDiagnosis from '@/components/RiskDiagnosis.vue';
 import { findReport } from '@/lib/storage';
-import { drawPoster, savePoster, POSTER_CANVAS_ID, posterHeight } from '@/lib/poster';
+import {
+  drawPoster,
+  savePoster,
+  POSTER_CANVAS_ID,
+  posterHeight,
+  POSTER_ENTRY_HEIGHT,
+} from '@/lib/poster';
 import type { PosterEntry } from '@/lib/poster';
 import { sharePoster } from '@/lib/share';
 import { findPublication, projectPath } from '@/lib/publication';
 import type { PublicationLink } from '@/lib/publication';
-import { demoCodePath, getProject, projectCodePath } from '@/lib/commerce-api';
+import { demoCodeEntry, getProject, projectCodePath } from '@/lib/commerce-api';
 
 const report = ref<EvaluationReport>();
 const tab = ref('risks');
@@ -32,7 +38,9 @@ const posterPath = ref('');
 const anonymous = ref(true);
 const publication = ref<PublicationLink>(),
   entry = ref<PosterEntry>();
-const canvasStyle = computed(() => ({ height: `${posterHeight(entry.value)}px` }));
+// Keep the backing canvas stable: uni-app applies a resize after Vue's nextTick,
+// which otherwise crops the bottom of an export when toggling anonymity.
+const canvasStyle = { height: `${POSTER_ENTRY_HEIGHT}px` };
 const previewStyle = computed(() => ({ height: `${posterHeight(entry.value) * 0.75}px` }));
 const posterBusy = ref(false);
 const posterError = ref('');
@@ -96,16 +104,15 @@ async function makePoster(setup = true) {
       entry.value = { codePath: await projectCodePath(publication.value.projectId) };
     } else if (publication.value?.example) {
       try {
-        entry.value = {
-          codePath: await demoCodePath({
-            industry: publication.value.example,
-            round: publication.value.round || 'angel',
-            priceFen: publication.value.priceFen || 8888,
-            anonymous: publication.value.anonymous,
-            preferences: publication.value.preferences || DEFAULT_PREFERENCES,
-          }),
-          label: '虚构演示 · 扫码体验',
-        };
+        entry.value = await demoCodeEntry({
+          industry: publication.value.example,
+          round: publication.value.round || 'angel',
+          priceFen: publication.value.priceFen || 8888,
+          anonymous: publication.value.anonymous,
+          preferences: publication.value.preferences || DEFAULT_PREFERENCES,
+          unlockEnabled: publication.value.unlockEnabled,
+          tipsEnabled: publication.value.tipsEnabled,
+        });
       } catch {
         shareHint.value = '示例扫码入口尚未配置，当前海报不含二维码。配置后可生成真实入口。';
       }
@@ -365,7 +372,9 @@ const retry = () =>
           ><text class="poster-caption">{{
             entry
               ? publication?.example
-                ? '虚构示例扫码入口；本地地址仅供本机预览，未接通真实收款。'
+                ? entry.label?.includes('仅本机')
+                  ? '虚构示例扫码入口；本地地址仅供本机预览，未接通真实收款。'
+                  : '虚构示例扫码入口，不含真实项目或联系人；未接通真实收款。'
                 : '扫码可看你授权公开的完整评估；资料包和联系方式另行解锁。'
               : publication?.example
                 ? '虚构演示海报；未配置官方小程序码，当前画面不含扫码入口。'

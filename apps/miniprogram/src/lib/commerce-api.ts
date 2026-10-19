@@ -10,6 +10,7 @@ import type {
 } from '@pitchcoach/shared';
 import { makeDemoScene } from '@pitchcoach/shared';
 import { ApiFailure, ensureSession, request } from './api';
+import type { PosterEntry } from './poster';
 
 const BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
 export interface CommerceConfig {
@@ -17,6 +18,7 @@ export interface CommerceConfig {
   paymentAvailable: boolean;
   miniCodeAvailable: boolean;
   webCodeAvailable: boolean;
+  webCodeLocal: boolean;
 }
 async function secured<T>(path: string, method: 'GET' | 'POST' | 'DELETE' = 'GET', body?: unknown) {
   await ensureSession();
@@ -79,7 +81,7 @@ export async function projectCodePath(id: string): Promise<string> {
     }),
   );
 }
-export async function demoCodePath(scene: DemoScene): Promise<string> {
+export async function demoCodeEntry(scene: DemoScene): Promise<PosterEntry> {
   const config = await commerceConfig();
   let format = config.miniCodeAvailable ? 'mini' : 'web';
   // #ifdef MP-WEIXIN
@@ -93,7 +95,14 @@ export async function demoCodePath(scene: DemoScene): Promise<string> {
   return new Promise((resolve, reject) =>
     uni.getImageInfo({
       src: `${BASE}/api/demo/code.png?format=${format}&scene=${encodeURIComponent(makeDemoScene(scene))}`,
-      success: (result) => resolve(result.path),
+      success: (result) =>
+        resolve({
+          codePath: result.path,
+          label:
+            format === 'web' && config.webCodeLocal
+              ? '虚构演示 · 仅本机预览'
+              : '虚构演示 · 扫码体验',
+        }),
       fail: () => reject(new ApiFailure('SHARE_CODE_UNAVAILABLE', '示例扫码入口生成失败')),
     }),
   );

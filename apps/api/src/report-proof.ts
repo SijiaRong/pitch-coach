@@ -26,6 +26,7 @@ export function verifyReportProof(
   owner: string,
   secret: string,
 ): boolean {
+  if (typeof report.publicationProof !== 'string') return false;
   const [expiry, proof, extra] = report.publicationProof?.split('.') || [];
   if (
     extra ||

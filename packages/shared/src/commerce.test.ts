@@ -83,6 +83,8 @@ describe('项目参与金额与披露规则', () => {
           priceFen: 9999999,
           anonymous: true,
           preferences: [...DEFAULT_PREFERENCES],
+          unlockEnabled: true,
+          tipsEnabled: true,
         };
         const scene = makeDemoScene(value);
         expect(scene.length).toBeLessThanOrEqual(32);
@@ -95,5 +97,18 @@ describe('项目参与金额与披露规则', () => {
       'd~ai~angel~8888~1~012~extra',
     ])
       expect(readDemoScene(value)).toBeUndefined();
+    for (const unlockEnabled of [true, false])
+      for (const tipsEnabled of [true, false]) {
+        const scene = makeDemoScene({
+          industry: 'ai',
+          round: 'angel',
+          priceFen: 8888,
+          anonymous: true,
+          preferences: DEFAULT_PREFERENCES,
+          unlockEnabled,
+          tipsEnabled,
+        });
+        expect(readDemoScene(scene)).toMatchObject({ unlockEnabled, tipsEnabled });
+      }
   });
 });

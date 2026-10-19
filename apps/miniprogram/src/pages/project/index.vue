@@ -68,6 +68,8 @@ const publicPath = computed(() =>
           priceFen: project.value.unlockPriceFen,
           anonymous: project.value.anonymous,
           preferences: project.value.report.preferences,
+          unlockEnabled: project.value.unlockEnabled,
+          tipsEnabled: project.value.tipsEnabled,
         })
       : `/pages/project/index?share=${project.value.id}`,
 );
@@ -83,6 +85,7 @@ onLoad(async (options) => {
         demoScene.priceFen,
         demoScene.anonymous,
         demoScene.preferences,
+        demoScene,
       );
     else if (options?.share || (scene && scene !== 'demo')) {
       const id = options?.share || scene!;
@@ -109,6 +112,7 @@ onLoad(async (options) => {
         Number.isSafeInteger(price) && price >= 1 && price <= 9999999 ? price : DEFAULT_UNLOCK_FEN,
         options?.anonymous !== '0',
         preferences,
+        { unlockEnabled: options?.unlock !== '0', tipsEnabled: options?.tips !== '0' },
       );
     }
   } catch (cause) {

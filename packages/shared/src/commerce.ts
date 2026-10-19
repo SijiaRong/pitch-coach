@@ -16,6 +16,7 @@ export function revenueSplit(
   if (
     ![receiptFen, refundFen, rateBps].every(Number.isSafeInteger) ||
     receiptFen < 0 ||
+    receiptFen > MAX_PRICE_FEN ||
     refundFen < 0 ||
     refundFen > receiptFen ||
     rateBps < 0 ||
@@ -42,9 +43,12 @@ export interface DemoScene {
   priceFen: number;
   anonymous: boolean;
   preferences: readonly PreferenceId[];
+  unlockEnabled?: boolean;
+  tipsEnabled?: boolean;
 }
 export function makeDemoScene(value: DemoScene): string {
-  return `d~${value.industry}~${value.round}~${value.priceFen}~${value.anonymous ? 1 : 0}~${value.preferences.map((id) => PREFERENCE_IDS.indexOf(id)).join('')}`;
+  const offers = (value.unlockEnabled !== false ? 1 : 0) + (value.tipsEnabled !== false ? 2 : 0);
+  return `d~${value.industry}~${value.round}~${value.priceFen}~${value.anonymous ? 1 : 0}~${value.preferences.map((id) => PREFERENCE_IDS.indexOf(id)).join('')}${offers}`;
 }
 export function readDemoScene(value: string): DemoScene | undefined {
   const [prefix, industry, round, price, anonymous, preferences, extra] = value.split('~');
@@ -56,10 +60,10 @@ export function readDemoScene(value: string): DemoScene | undefined {
     !/^\d{1,7}$/.test(price || '') ||
     Number(price) < 1 ||
     !['0', '1'].includes(anonymous) ||
-    !/^\d{3}$/.test(preferences || '')
+    !/^\d{3}[0-3]?$/.test(preferences || '')
   )
     return;
-  const ids = [...preferences].map((index) => PREFERENCE_IDS[Number(index)]);
+  const ids = [...preferences.slice(0, 3)].map((index) => PREFERENCE_IDS[Number(index)]);
   if (ids.some((id) => !id) || new Set(ids).size !== 3) return;
   return {
     industry: industry as IndustryId,
@@ -67,6 +71,8 @@ export function readDemoScene(value: string): DemoScene | undefined {
     priceFen: Number(price),
     anonymous: anonymous === '1',
     preferences: ids,
+    unlockEnabled: (Number(preferences[3] ?? 3) & 1) !== 0,
+    tipsEnabled: (Number(preferences[3] ?? 3) & 2) !== 0,
   };
 }
 export const privatePackSchema = z.object({

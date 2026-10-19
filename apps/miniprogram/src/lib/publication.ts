@@ -21,6 +21,8 @@ export interface PublicationLink {
   priceFen?: number;
   anonymous: boolean;
   preferences?: PreferenceId[];
+  unlockEnabled?: boolean;
+  tipsEnabled?: boolean;
 }
 const KEY = 'pitchcoach:publications:v1';
 const links = () => {
@@ -46,7 +48,7 @@ export function removePublication(projectId: string) {
 }
 export const projectPath = (value: PublicationLink) =>
   value.example
-    ? `/pages/project/index?example=${value.example}&round=${value.round || 'angel'}&price=${value.priceFen || DEFAULT_UNLOCK_FEN}&anonymous=${value.anonymous ? 1 : 0}${value.preferences ? `&preferences=${value.preferences.join(',')}` : ''}`
+    ? `/pages/project/index?example=${value.example}&round=${value.round || 'angel'}&price=${value.priceFen || DEFAULT_UNLOCK_FEN}&anonymous=${value.anonymous ? 1 : 0}&unlock=${value.unlockEnabled !== false ? 1 : 0}&tips=${value.tipsEnabled !== false ? 1 : 0}${value.preferences ? `&preferences=${value.preferences.join(',')}` : ''}`
     : `/pages/project/index?share=${value.projectId}`;
 export function demoProject(
   industry: IndustryId = 'ai',
@@ -54,6 +56,7 @@ export function demoProject(
   priceFen = DEFAULT_UNLOCK_FEN,
   anonymous = true,
   preferences?: readonly PreferenceId[],
+  offers?: { unlockEnabled?: boolean; tipsEnabled?: boolean },
 ): PublishedProject {
   const report = createDemoReport(industry, 'sharp', round, preferences);
   return {
@@ -61,9 +64,9 @@ export function demoProject(
     mode: 'demo',
     report: publicReportCopy(report, anonymous),
     anonymous,
-    unlockEnabled: true,
+    unlockEnabled: offers?.unlockEnabled ?? true,
     unlockPriceFen: priceFen,
-    tipsEnabled: true,
+    tipsEnabled: offers?.tipsEnabled ?? true,
     createdAt: report.createdAt,
     revision: 1,
     views: 0,

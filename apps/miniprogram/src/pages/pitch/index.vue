@@ -310,7 +310,9 @@ async function submit() {
         ><text class="upload-plus">+</text></button
       ><view class="upload-privacy-note"
         >文件仅上传至我们的服务器提取文字，开始评估时才交给 DeepSeek。建议先脱敏。
-        <button @click="uni.navigateTo({ url: '/pages/privacy/index?section=data' })">资料处理说明 ↗</button></view
+        <button @click="uni.navigateTo({ url: '/pages/privacy/index?section=data' })">
+          资料处理说明 ↗
+        </button></view
       ><button class="paste-toggle" @click="expandedBP = !expandedBP">
         <text>{{ expandedBP ? '收起正文' : '或者，直接粘贴项目正文' }}</text
         ><text>{{ expandedBP ? '−' : '+' }}</text></button
@@ -394,8 +396,18 @@ async function submit() {
         >我同意将项目资料发送给 DeepSeek，用于生成评估。报告保存在本机，不会自动公开。</text
       ></button
     ><view class="consent-links">
-      <button class="privacy-link" @click="uni.navigateTo({ url: '/pages/privacy/index?section=ai' })">资料处理与隐私 ↗</button>
-      <button class="privacy-link" @click="uni.navigateTo({ url: '/pages/privacy/index?section=terms' })">使用须知 ↗</button>
+      <button
+        class="privacy-link"
+        @click="uni.navigateTo({ url: '/pages/privacy/index?section=ai' })"
+      >
+        资料处理与隐私 ↗
+      </button>
+      <button
+        class="privacy-link"
+        @click="uni.navigateTo({ url: '/pages/privacy/index?section=terms' })"
+      >
+        使用须知 ↗
+      </button>
     </view>
     <view v-if="error" class="error-box" role="alert">{{ error }}</view>
     <button class="primary lime" :disabled="busy || uploading || !panelReady" @click="submit">

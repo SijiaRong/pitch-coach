@@ -9,7 +9,8 @@ export interface PosterEntry {
   codePath: string;
   label?: string;
 }
-export const posterHeight = (entry?: PosterEntry) => (entry ? 812 : POSTER_HEIGHT);
+export const POSTER_ENTRY_HEIGHT = 812;
+export const posterHeight = (entry?: PosterEntry) => (entry ? POSTER_ENTRY_HEIGHT : POSTER_HEIGHT);
 
 function wrap(context: UniApp.CanvasContext, value: string, maxWidth: number, maxLines: number) {
   const lines: string[] = [];
@@ -188,11 +189,14 @@ export async function savePoster(path: string) {
     uni.saveImageToPhotosAlbum({
       filePath: path,
       success: () => resolve(),
-      fail: (error) => reject(new Error(
-        isPrivacyRefusal(error)
-          ? '未同意微信隐私指引，图片未保存。你仍可预览或分享海报。'
-          : '保存失败，请在微信设置中允许保存图片；也可以长按预览图保存。',
-      )),
+      fail: (error) =>
+        reject(
+          new Error(
+            isPrivacyRefusal(error)
+              ? '未同意微信隐私指引，图片未保存。你仍可预览或分享海报。'
+              : '保存失败，请在微信设置中允许保存图片；也可以长按预览图保存。',
+          ),
+        ),
     }),
   );
   // #endif

@@ -220,6 +220,16 @@ describe('公开项目与真实支付权限边界', () => {
           method: 'POST',
           url: '/api/projects',
           headers: fresh.owner,
+          payload: { ...fresh.publish, report: { ...fresh.report, publicationProof: 123 } },
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await fresh.app.inject({
+          method: 'POST',
+          url: '/api/projects',
+          headers: fresh.owner,
           payload: { ...fresh.publish, publicReportConsent: false },
         })
       ).statusCode,

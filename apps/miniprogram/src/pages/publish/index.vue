@@ -109,6 +109,8 @@ async function publish() {
         priceFen: fen,
         anonymous: anonymous.value,
         preferences: report.value.preferences,
+        unlockEnabled: unlockEnabled.value,
+        tipsEnabled: tipsEnabled.value,
       };
     else {
       const availability = await commerceConfig();

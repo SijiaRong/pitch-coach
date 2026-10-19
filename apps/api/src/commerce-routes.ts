@@ -93,6 +93,10 @@ export function registerCommerce(
     paymentAvailable: config.paymentEnabled,
     miniCodeAvailable: Boolean(config.WECHAT_APP_ID && config.WECHAT_APP_SECRET),
     webCodeAvailable: Boolean(config.PUBLIC_WEB_URL),
+    webCodeLocal: Boolean(
+      config.PUBLIC_WEB_URL &&
+        ['localhost', '127.0.0.1', '[::1]'].includes(new URL(config.PUBLIC_WEB_URL).hostname),
+    ),
     settlement: 'pending_external',
     serviceFeeRateBps: SERVICE_FEE_RATE_BPS,
   }));
