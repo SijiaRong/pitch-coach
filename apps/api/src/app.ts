@@ -4,7 +4,7 @@ import helmet from '@fastify/helmet';
 import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
 import { z } from 'zod';
-import { submissionSchema } from '@pitchcoach/shared';
+import { getPanel, submissionSchema } from '@pitchcoach/shared';
 import type { Config } from './config';
 import { createSession, requireOwner } from './auth';
 import { PublicError } from './errors';
@@ -77,7 +77,7 @@ export async function createApp(
 
   app.get('/health', async () => ({ ok: true }));
   app.get('/api/config', async () => ({
-    liveAvailable: Boolean(config.AI_API_KEY),
+    liveAvailable: config.liveAvailable,
     requireWechat: Boolean(config.WECHAT_APP_ID),
     maxFileBytes: MAX_FILE_BYTES,
   }));
@@ -115,8 +115,17 @@ export async function createApp(
     async (request, reply) => {
       const owner = requireOwner(request, config);
       const submission = submissionSchema.parse(request.body);
-      if (!config.AI_API_KEY && !options.reviewer)
-        throw new PublicError(503, 'AI_NOT_CONFIGURED', 'AI 服务尚未配置，可以先体验示例报告');
+      if (
+        !options.reviewer &&
+        !getPanel(submission.industry, submission.round, submission.preferences).every(
+          (investor) => config.modelFor(investor.id).apiKey,
+        )
+      )
+        throw new PublicError(
+          503,
+          'AI_NOT_CONFIGURED',
+          '本场部分 AI 教练尚未配置，可以调整偏好或先体验示例报告',
+        );
       return reply.code(202).send(jobs.create(owner, submission));
     },
   );

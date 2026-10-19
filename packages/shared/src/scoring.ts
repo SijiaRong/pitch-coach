@@ -88,7 +88,7 @@ export function aggregateReport(
     };
   });
   const { score, coverage } = weightedScore(dimensions, submission);
-  const missingInvestors = getPanel(submission.industry, submission.round)
+  const missingInvestors = getPanel(submission.industry, submission.round, submission.preferences)
     .filter((investor) => !reviews.some((review) => review.investorId === investor.id))
     .map((investor) => investor.id);
   const votes = reviews.map((review) => review.vote);
@@ -121,6 +121,7 @@ export function aggregateReport(
     projectName: submission.projectName,
     industry: submission.industry,
     round: submission.round,
+    preferences: [...submission.preferences],
     stage: submission.stage,
     tone: submission.tone,
     score,

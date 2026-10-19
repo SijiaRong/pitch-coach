@@ -1,3 +1,20 @@
+import {
+  DEFAULT_PREFERENCES,
+  INDUSTRY_LENSES,
+  PANEL_SIZE,
+  PREFERENCES,
+  ROUND_QUESTIONS,
+} from './preferences';
+import type { PreferenceId } from './preferences';
+export {
+  DEFAULT_PREFERENCES,
+  PANEL_SIZE,
+  PREFERENCES,
+  PREFERENCE_IDS,
+  getPreference,
+} from './preferences';
+export type { InvestmentPreference, PreferenceId } from './preferences';
+
 export const INDUSTRY_IDS = [
   'ai',
   'saas',
@@ -165,9 +182,17 @@ export interface Investor {
   style: string;
   focus: string;
   opening: string;
+  industry?: IndustryId;
+  round?: RoundId;
+  preference?: PreferenceId;
+  question?: string;
+  roundQuestion?: string;
+  task?: string;
+  legacyModelId?: string;
 }
 
-export const INVESTORS: Record<string, Investor> = {
+/** Read-only lookup for reports and model overrides created before the specialist roster. */
+export const LEGACY_INVESTORS: Record<string, Investor> = {
   'ai-partner': {
     id: 'ai-partner',
     name: '沈砚',
@@ -495,11 +520,6 @@ export const VOTE_LABELS: Record<Vote, string> = {
 };
 export const getIndustry = (id: IndustryId) => INDUSTRIES.find((item) => item.id === id)!;
 export const getRound = (id: RoundId) => FUNDING_ROUNDS.find((item) => item.id === id)!;
-export const getPanel = (id: IndustryId, round: RoundId = 'angel'): Investor[] => [
-  INVESTORS[getIndustry(id).lead],
-  INVESTORS[getRound(round).coach],
-  INVESTORS['finance-partner'],
-];
 
 /** Combine industry priorities and round expectations; largest remainder keeps integer weights at 100. */
 export function getWeights(
@@ -522,4 +542,124 @@ export function getWeights(
     .slice(0, remaining)
     .forEach((item) => weights[item.id]++);
   return weights;
+}
+
+export interface SpecialistInvestor extends Investor {
+  industry: IndustryId;
+  round: RoundId;
+  preference: PreferenceId;
+  question: string;
+  roundQuestion: string;
+  task: string;
+  legacyModelId: string;
+}
+
+const FAMILY_NAMES = [
+  '沈',
+  '江',
+  '许',
+  '陈',
+  '林',
+  '方',
+  '陆',
+  '闻',
+  '顾',
+  '程',
+  '唐',
+  '周',
+  '叶',
+  '苏',
+  '秦',
+  '季',
+  '温',
+  '宋',
+  '谢',
+  '韩',
+  '杜',
+  '孟',
+  '邵',
+  '贺',
+  '裴',
+  '傅',
+  '黎',
+  '钟',
+  '白',
+  '魏',
+  '乔',
+  '袁',
+  '任',
+  '萧',
+  '段',
+  '夏',
+  '冯',
+  '陶',
+  '汪',
+  '徐',
+  '梁',
+  '邹',
+  '姜',
+  '罗',
+  '马',
+  '何',
+  '高',
+  '严',
+];
+const INDUSTRY_GIVEN_NAMES = ['砚', '澄', '知', '铸', '芷', '循', '衡', '舟'];
+const PREFERENCE_GIVEN_NAMES = ['川', '远', '禾', '宁', '行', '策'];
+
+export const specialistId = (industry: IndustryId, round: RoundId, preference: PreferenceId) =>
+  `${industry}-${round}-${preference}`;
+
+/** One distinct, stage-aware coach for every industry × round × preference cell. */
+export const INVESTOR_ROSTER: SpecialistInvestor[] = FUNDING_ROUNDS.flatMap((round, roundIndex) =>
+  INDUSTRIES.flatMap((industry, industryIndex) =>
+    PREFERENCES.map((preference, preferenceIndex) => {
+      const lens = INDUSTRY_LENSES[industry.id][preference.id];
+      const roundQuestion = ROUND_QUESTIONS[round.id][preference.id];
+      return {
+        id: specialistId(industry.id, round.id, preference.id),
+        name: `${FAMILY_NAMES[roundIndex * INDUSTRIES.length + industryIndex]}${INDUSTRY_GIVEN_NAMES[industryIndex]}${PREFERENCE_GIVEN_NAMES[preferenceIndex]}`,
+        title: `${preference.name}派`,
+        mark: preference.mark,
+        color: preference.color,
+        industry: industry.id,
+        round: round.id,
+        preference: preference.id,
+        style: preference.style,
+        focus: `${industry.name}：${lens.focus} ${round.name}：${roundQuestion}`,
+        opening: `${round.name}，${lens.opening}`,
+        question: lens.question,
+        roundQuestion,
+        task: lens.task,
+        legacyModelId:
+          preference.id === 'technology'
+            ? industry.lead
+            : preference.id === 'financial'
+              ? 'finance-partner'
+              : round.coach,
+      };
+    }),
+  ),
+);
+
+const SPECIALISTS = Object.fromEntries(INVESTOR_ROSTER.map((investor) => [investor.id, investor]));
+export const INVESTORS: Record<string, Investor> = { ...LEGACY_INVESTORS, ...SPECIALISTS };
+export const getSpecialist = (industry: IndustryId, round: RoundId, preference: PreferenceId) => {
+  const investor = SPECIALISTS[specialistId(industry, round, preference)];
+  if (!investor) throw new Error('UNKNOWN_INVESTOR_SPECIALTY');
+  return investor;
+};
+
+export function getPanel(
+  industry: IndustryId,
+  round: RoundId = 'angel',
+  preferences: readonly PreferenceId[] = DEFAULT_PREFERENCES,
+): SpecialistInvestor[] {
+  if (preferences.length !== PANEL_SIZE || new Set(preferences).size !== PANEL_SIZE)
+    throw new Error('PANEL_REQUIRES_THREE_DISTINCT_PREFERENCES');
+  return preferences.map((preference) => getSpecialist(industry, round, preference));
+}
+
+export function recommendPreferences(preferred: PreferenceId): PreferenceId[] {
+  return [...new Set([preferred, ...DEFAULT_PREFERENCES])].slice(0, PANEL_SIZE);
 }

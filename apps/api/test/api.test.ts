@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DIMENSIONS, EXAMPLES } from '@pitchcoach/shared';
+import { DEFAULT_PREFERENCES, DIMENSIONS, EXAMPLES, getPanel } from '@pitchcoach/shared';
 import type { ReviewContent, Submission } from '@pitchcoach/shared';
 import { createApp } from '../src/app';
 import { issueToken } from '../src/auth';
@@ -18,6 +18,7 @@ const input: Submission = {
   projectName: '测试项目',
   industry: 'ai',
   round: 'angel',
+  preferences: [...DEFAULT_PREFERENCES],
   stage: '已有收入',
   description: EXAMPLES.ai.description,
   bpText: EXAMPLES.ai.bp,
@@ -210,12 +211,12 @@ describe('模型适配与任务退化', () => {
   });
   it('部分模型失败时标注缺席；全部失败时明确报错', async () => {
     const partial = new EvaluationJobs(config, async (_input, investor) => {
-      if (investor.id === 'ai-partner') throw new Error('upstream');
+      if (investor.preference === 'technology') throw new Error('upstream');
       return { content: review, model: 'mock' };
     });
     const job = partial.create('one', input);
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(partial.get(job.id, 'one').report?.missingInvestors).toEqual(['ai-partner']);
+    expect(partial.get(job.id, 'one').report?.missingInvestors).toEqual([getPanel('ai')[0].id]);
     expect(partial.get(job.id, 'one').report?.verdict).toBe('watch');
     partial.close();
     const failed = new EvaluationJobs(config, async () => {

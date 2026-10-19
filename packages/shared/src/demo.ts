@@ -1,5 +1,5 @@
-import { DIMENSIONS, getPanel } from './catalog';
-import type { IndustryId, RoundId, Tone } from './catalog';
+import { DEFAULT_PREFERENCES, DIMENSIONS, getPanel, getPreference } from './catalog';
+import type { IndustryId, PreferenceId, RoundId, Tone } from './catalog';
 import type { EvaluationReport, ReviewContent, Submission } from './schema';
 import { aggregateReport, prepareReview } from './scoring';
 
@@ -59,12 +59,14 @@ export function createDemoReport(
   industry: IndustryId = 'ai',
   tone: Tone = 'sharp',
   round: RoundId = 'angel',
+  preferences: readonly PreferenceId[] = DEFAULT_PREFERENCES,
 ): EvaluationReport {
   const example = EXAMPLES[industry];
   const submission: Submission = {
     projectName: example.name,
     industry,
     round,
+    preferences: [...preferences],
     stage: ['hardware', 'health', 'climate'].includes(industry) ? '已有用户' : '已有收入',
     description: example.description,
     bpText: example.bp,
@@ -93,39 +95,29 @@ export function createDemoReport(
     '明确未来 12 个月的关键岗位、招聘顺序及责任人。',
     '把融资预算拆成每月支出，并为每笔钱设定可检验的里程碑。',
   ];
-  const reviews = getPanel(industry, round).map((investor, index) => {
+  const reviews = getPanel(industry, round, preferences).map((investor) => {
+    const preference = getPreference(investor.preference);
     const content: ReviewContent = {
-      vote: index === 2 ? 'pass' : 'watch',
-      thesis:
-        index === 0
-          ? '有清楚的使用场景，也有早期验证。距离可投资，还差能经得起追问的留存与竞争证据。'
-          : index === 1
-            ? '先别急着放大投放。把客户为什么来、为什么走、多久回本说明白，再谈增长飞轮。'
-            : '需要把每个客户的完整收入和成本算清楚，并证明融资能换来下一步业务进展。',
+      vote: investor.preference === 'financial' ? 'pass' : 'watch',
+      thesis: `固定演示：以${preference.name}视角审阅。${investor.focus} 上述证据仍需独立核验。`,
       oneLiner:
         tone === 'balanced'
-          ? '方向值得继续验证，先补齐留存、壁垒和单位经济的证据。'
-          : index === 2
-            ? '你的梦想很贵，先让我看看账本。'
-            : index === 1
-              ? '用户来过，不等于生意来过。'
-              : '有了产品的轮廓，还缺生意的骨架。',
+          ? `从${preference.name}视角继续核验，先补齐本轮关键证据。`
+          : investor.opening,
       dimensions: DIMENSIONS.map((dimension, dimensionIndex) => ({
         id: dimension.id,
         score:
           baseScores[dimensionIndex] === null
             ? null
-            : Math.max(0, baseScores[dimensionIndex]! - index * 4),
+            : Math.max(0, baseScores[dimensionIndex]! + preference.demoAdjustment),
         evidence:
           baseScores[dimensionIndex] === null ? '' : sentences[dimensionIndex % sentences.length],
-        reason: reasons[dimensionIndex],
-        action: actions[dimensionIndex],
+        reason: `${reasons[dimensionIndex]}${preference.dimensions.includes(dimension.id) ? `本评审重点追问：${investor.question}` : ''}`,
+        action: preference.dimensions.includes(dimension.id)
+          ? investor.task
+          : actions[dimensionIndex],
       })),
-      questions: [
-        '最容易流失的客户有什么共同点？',
-        '如果把获客和交付都算进去，每个客户多久回本？',
-        '下一轮融资前，你准备证明哪一个关键假设？',
-      ],
+      questions: [investor.question, investor.roundQuestion, preference.question],
       risks: [
         '本报告使用虚构项目和固定演示评分，不是对真实项目的 AI 评估。',
         '客户留存和完整成本仍需进一步核验。',
@@ -134,7 +126,7 @@ export function createDemoReport(
     return prepareReview(content, investor.id, '固定演示 · 非模型调用', submission);
   });
   return aggregateReport(submission, reviews, {
-    id: `demo-${industry}-${Date.now()}`,
+    id: `demo-${industry}-${round}-${preferences.join('-')}-${Date.now()}`,
     mode: 'demo',
   });
 }

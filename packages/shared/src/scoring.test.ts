@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { DIMENSIONS, FUNDING_ROUNDS, INDUSTRIES, getPanel, getWeights } from './catalog';
+import {
+  DEFAULT_PREFERENCES,
+  DIMENSIONS,
+  FUNDING_ROUNDS,
+  INDUSTRIES,
+  getPanel,
+  getWeights,
+} from './catalog';
 import { EXAMPLES, createDemoReport } from './demo';
 import { reviewContentSchema, submissionSchema } from './schema';
 import type { ReviewContent, Submission } from './schema';
@@ -9,6 +16,7 @@ const submission: Submission = {
   projectName: '测试项目',
   industry: 'ai',
   round: 'angel',
+  preferences: [...DEFAULT_PREFERENCES],
   stage: '已有收入',
   description: EXAMPLES.ai.description,
   bpText: EXAMPLES.ai.bp,
@@ -38,7 +46,9 @@ describe('评分与结论', () => {
     for (const industry of INDUSTRIES) {
       expect(Object.values(industry.weights).reduce((sum, value) => sum + value, 0)).toBe(100);
       expect(getPanel(industry.id)).toHaveLength(3);
-      expect(getPanel(industry.id)[0].id).toBe(industry.lead);
+      expect(getPanel(industry.id).every((investor) => investor.industry === industry.id)).toBe(
+        true,
+      );
     }
   });
   it('剔除模型编造的原文证据，不把缺失证据算成零分', () => {
@@ -119,7 +129,7 @@ describe('评分与结论', () => {
     for (const industry of INDUSTRIES) {
       const report = createDemoReport(industry.id);
       expect(report.mode).toBe('demo');
-      expect(report.investors[0].investorId).toBe(industry.lead);
+      expect(report.investors[0].investorId).toBe(getPanel(industry.id)[0].id);
       expect(report.projectName).toBe(EXAMPLES[industry.id].name);
       expect(report.dimensions).toHaveLength(8);
     }
@@ -131,8 +141,11 @@ describe('评分与结论', () => {
           Object.values(getWeights(industry.id, round.id)).reduce((sum, value) => sum + value, 0),
         ).toBe(100);
         const matched = getPanel(industry.id, round.id);
-        expect(matched[0].id).toBe(industry.lead);
-        expect(matched[1].id).toBe(round.coach);
+        expect(
+          matched.every(
+            (investor) => investor.industry === industry.id && investor.round === round.id,
+          ),
+        ).toBe(true);
         expect(new Set(matched.map((investor) => investor.id)).size).toBe(3);
         expect(createDemoReport(industry.id, 'sharp', round.id).round).toBe(round.id);
       }

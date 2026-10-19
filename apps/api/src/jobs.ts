@@ -66,14 +66,16 @@ export class EvaluationJobs {
   private async run(job: Job, submission: Submission) {
     try {
       const results = await Promise.allSettled(
-        getPanel(submission.industry, submission.round).map(async (investor) => {
-          try {
-            const result = await this.reviewer(submission, investor, job.controller.signal);
-            return prepareReview(result.content, investor.id, result.model, submission);
-          } finally {
-            job.state.completedInvestors++;
-          }
-        }),
+        getPanel(submission.industry, submission.round, submission.preferences).map(
+          async (investor) => {
+            try {
+              const result = await this.reviewer(submission, investor, job.controller.signal);
+              return prepareReview(result.content, investor.id, result.model, submission);
+            } finally {
+              job.state.completedInvestors++;
+            }
+          },
+        ),
       );
       if (job.controller.signal.aborted) return;
       const reviews = results

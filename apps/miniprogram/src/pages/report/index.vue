@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue';
 import { onLoad, onShareAppMessage, onShareTimeline } from '@dcloudio/uni-app';
-import { INVESTORS, VOTE_LABELS, getIndustry, getRound } from '@pitchcoach/shared';
+import { INVESTORS, VOTE_LABELS, getIndustry, getPreference, getRound } from '@pitchcoach/shared';
 import type { EvaluationReport } from '@pitchcoach/shared';
 import PageHeader from '@/components/PageHeader.vue';
 import InvestorAvatar from '@/components/InvestorAvatar.vue';
@@ -72,7 +72,7 @@ function copyActions() {
 }
 const retry = () =>
   uni.reLaunch({
-    url: `/pages/pitch/index?industry=${report.value?.industry || 'ai'}&round=${report.value?.round || 'angel'}`,
+    url: `/pages/pitch/index?industry=${report.value?.industry || 'ai'}&round=${report.value?.round || 'angel'}${report.value?.preferences ? `&preferences=${report.value.preferences.join(',')}` : ''}`,
   });
 </script>
 
@@ -95,6 +95,12 @@ const retry = () =>
         ><text> / </text><text>{{ roundName }}</text
         ><text> / </text><text>{{ report.stage }}</text
         ><text> / </text><text>{{ report.tone === 'sharp' ? '犀利版' : '专业版' }}</text></view
+      >
+
+      <view v-if="report.preferences" class="report-preferences"
+        ><text v-for="preference in report.preferences" :key="preference">{{
+          getPreference(preference).name
+        }}</text></view
       >
 
       <view class="score-card"
@@ -275,6 +281,19 @@ const retry = () =>
 </template>
 
 <style scoped>
+.report-preferences {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: -7px 0 18px;
+}
+.report-preferences text {
+  color: #738b58;
+  background: #edf1e3;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 9px;
+}
 .report-topline {
   display: flex;
   justify-content: space-between;

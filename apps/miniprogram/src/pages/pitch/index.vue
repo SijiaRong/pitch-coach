@@ -3,18 +3,22 @@ import { computed, ref } from 'vue';
 import { onLoad, onUnload } from '@dcloudio/uni-app';
 import {
   EXAMPLES,
+  DEFAULT_PREFERENCES,
   FUNDING_ROUNDS,
   INDUSTRIES,
   INDUSTRY_IDS,
   ROUND_IDS,
+  PANEL_SIZE,
+  PREFERENCES,
   STAGES,
   createDemoReport,
   getIndustry,
-  getPanel,
+  getSpecialist,
+  panelPreferencesSchema,
   getRound,
   submissionSchema,
 } from '@pitchcoach/shared';
-import type { IndustryId, RoundId, Submission } from '@pitchcoach/shared';
+import type { IndustryId, PreferenceId, RoundId, Submission } from '@pitchcoach/shared';
 import PageHeader from '@/components/PageHeader.vue';
 import BottomNav from '@/components/BottomNav.vue';
 import InvestorAvatar from '@/components/InvestorAvatar.vue';
@@ -31,6 +35,9 @@ import { openReport } from '@/lib/storage';
 const projectName = ref('');
 const industry = ref<IndustryId>('ai');
 const round = ref<RoundId>('angel');
+const preferences = ref<PreferenceId[]>([...DEFAULT_PREFERENCES]);
+const preferenceEditor = ref(false);
+const preferenceError = ref('');
 const stage = ref<Submission['stage']>('已有原型');
 const description = ref('');
 const bpText = ref('');
@@ -45,7 +52,10 @@ const error = ref('');
 const availability = ref('正在连接评估服务…');
 const currentIndustry = computed(() => getIndustry(industry.value));
 const currentRound = computed(() => getRound(round.value));
-const panel = computed(() => getPanel(industry.value, round.value));
+const panel = computed(() =>
+  preferences.value.map((preference) => getSpecialist(industry.value, round.value, preference)),
+);
+const panelReady = computed(() => preferences.value.length === PANEL_SIZE);
 let operation = 0;
 let activeId = '';
 
@@ -54,6 +64,10 @@ onLoad((options) => {
     industry.value = options.industry as IndustryId;
   if (options?.round && ROUND_IDS.includes(options.round as RoundId))
     round.value = options.round as RoundId;
+  if (options?.preferences) {
+    const parsed = panelPreferencesSchema.safeParse(options.preferences.split(','));
+    if (parsed.success) preferences.value = parsed.data;
+  }
   void getConfig()
     .then((config) => {
       availability.value = config.liveAvailable
@@ -70,6 +84,17 @@ onUnload(() => {
 
 function setStage(event: { detail: { value: string | number } }) {
   stage.value = STAGES[Number(event.detail.value)];
+}
+function togglePreference(id: PreferenceId) {
+  preferenceError.value = '';
+  if (preferences.value.includes(id))
+    preferences.value = preferences.value.filter((item) => item !== id);
+  else if (preferences.value.length < PANEL_SIZE) preferences.value = [...preferences.value, id];
+  else preferenceError.value = '先取消一种已选偏好，再邀请新的教练。';
+}
+function demo() {
+  if (panelReady.value)
+    openReport(createDemoReport(industry.value, tone.value, round.value, preferences.value));
 }
 function fillExample() {
   const example = EXAMPLES[industry.value];
@@ -122,6 +147,7 @@ async function submit() {
     projectName: projectName.value,
     industry: industry.value,
     round: round.value,
+    preferences: preferences.value,
     stage: stage.value,
     description: description.value,
     bpText: bpText.value,
@@ -204,7 +230,7 @@ async function submit() {
 
     <view class="field-group"
       ><view class="field-label"
-        ><text>在哪个赛道</text><text class="field-hint">匹配你的行业主审</text></view
+        ><text>在哪个赛道</text><text class="field-hint">匹配本领域专项教练</text></view
       ><view class="industry-choices"
         ><button
           v-for="item in INDUSTRIES"
@@ -315,8 +341,40 @@ async function submit() {
             ><text class="panel-title">{{ person.title }}</text></view
           ></view
         ></view
-      ></view
-    >
+      ><button
+        class="panel-customize"
+        :aria-expanded="preferenceEditor"
+        @click="preferenceEditor = !preferenceEditor"
+      >
+        <text>已邀请 {{ preferences.length }} / {{ PANEL_SIZE }} 位 · 更换评审偏好</text
+        ><text>{{ preferenceEditor ? '−' : '+' }}</text>
+      </button>
+      <view v-if="preferenceEditor" class="preference-editor">
+        <text class="caption">选择三种不同偏好，每位都专注于当前行业和融资轮次。</text>
+        <view class="preference-choices">
+          <button
+            v-for="item in PREFERENCES"
+            :key="item.id"
+            :class="{ selected: preferences.includes(item.id) }"
+            :aria-pressed="preferences.includes(item.id)"
+            @click="togglePreference(item.id)"
+          >
+            {{ preferences.includes(item.id) ? '✓ ' : '' }}{{ item.name }}
+          </button>
+        </view>
+        <text v-if="preferenceError || !panelReady" class="preference-hint">{{
+          preferenceError || '请补选至三位教练，再开始评估或查看示例。'
+        }}</text>
+      </view>
+      <button
+        class="panel-directory"
+        @click="
+          uni.navigateTo({ url: `/pages/investors/index?industry=${industry}&round=${round}` })
+        "
+      >
+        认识本领域与轮次的全部 {{ PREFERENCES.length }} 位教练 ↗
+      </button>
+    </view>
 
     <button class="consent-row" :aria-checked="consent" @click="consent = !consent">
       <view class="checkbox" :class="{ checked: consent }">{{ consent ? '✓' : '' }}</view
@@ -328,12 +386,12 @@ async function submit() {
       查看资料处理与隐私说明 ↗
     </button>
     <view v-if="error" class="error-box" role="alert">{{ error }}</view>
-    <button class="primary lime" :disabled="busy || uploading" @click="submit">
+    <button class="primary lime" :disabled="busy || uploading || !panelReady" @click="submit">
       <text>请投委会开场</text><text>↗</text></button
     ><view class="service-status"
       ><view class="service-dot" /><text>{{ availability }}</text></view
-    ><button class="demo-link" @click="openReport(createDemoReport(industry, tone, round))">
-      先看这个行业与轮次的示例报告 →
+    ><button class="demo-link" :disabled="!panelReady" @click="demo">
+      先看这组教练的示例报告 →
     </button>
     <BottomNav active="pitch" />
 
@@ -342,11 +400,14 @@ async function submit() {
         ><view class="loading-orb">✳</view><text class="eyebrow">IN THE INVESTMENT ROOM</text
         ><view class="loading-title">投委会正在审阅。</view
         ><text class="caption"
-          >有些问题值得多想一会儿。<br />{{ completed }} / 3 位 AI 投资人已完成审阅</text
+          >有些问题值得多想一会儿。<br />{{ completed }} / {{ PANEL_SIZE }} 位 AI
+          投资人已完成审阅</text
         ><view class="loading-people"
           ><InvestorAvatar v-for="person in panel" :key="person.id" :investor="person" /></view
         ><view class="progress-track"
-          ><view class="progress-fill" :style="{ width: `${(completed / 3) * 100}%` }" /></view
+          ><view
+            class="progress-fill"
+            :style="{ width: `${(completed / PANEL_SIZE) * 100}%` }" /></view
         ><text class="loading-footnote">通常需要 30–90 秒，请保持页面打开。</text
         ><button class="cancel-button" @click="cancel">取消本次评估</button></view
       ></view
@@ -355,6 +416,46 @@ async function submit() {
 </template>
 
 <style scoped>
+.panel-customize {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  font-size: 10px;
+  color: #617e4d;
+  padding-top: 16px;
+}
+.preference-editor {
+  padding-top: 12px;
+}
+.preference-choices {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7px;
+  margin-top: 10px;
+}
+.preference-choices button {
+  padding: 9px 3px;
+  font-size: 10px;
+  border: 1px solid #d9e0ce;
+  border-radius: 8px;
+}
+.preference-choices button.selected {
+  background: #e2ebcf;
+  color: #456339;
+  border-color: #99ae70;
+}
+.preference-hint {
+  display: block;
+  margin-top: 9px;
+  font-size: 10px;
+  color: #a07844;
+}
+.panel-directory {
+  font-size: 9px;
+  color: #8a9a79;
+  margin-top: 12px;
+  text-align: left;
+}
 .round-choices {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

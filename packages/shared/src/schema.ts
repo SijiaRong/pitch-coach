@@ -1,10 +1,26 @@
 import { z } from 'zod';
-import { DIMENSION_IDS, INDUSTRY_IDS, ROUND_IDS, STAGES } from './catalog';
+import {
+  DEFAULT_PREFERENCES,
+  DIMENSION_IDS,
+  INDUSTRY_IDS,
+  PANEL_SIZE,
+  PREFERENCE_IDS,
+  ROUND_IDS,
+  STAGES,
+} from './catalog';
+import type { PreferenceId } from './catalog';
+
+export const panelPreferencesSchema = z
+  .array(z.enum(PREFERENCE_IDS))
+  .length(PANEL_SIZE, '请选择三种投资偏好，组成三人投委会')
+  .refine((items) => new Set(items).size === PANEL_SIZE, '投资偏好不能重复')
+  .default(() => [...DEFAULT_PREFERENCES]);
 
 export const submissionSchema = z.object({
   projectName: z.string().trim().min(1, '请填写项目名称').max(32),
   industry: z.enum(INDUSTRY_IDS),
   round: z.enum(ROUND_IDS).default('angel'),
+  preferences: panelPreferencesSchema,
   stage: z.enum(STAGES),
   description: z.string().trim().min(30, '请至少用 30 个字说明项目').max(3000),
   bpText: z.string().trim().max(50000).default(''),
@@ -52,6 +68,8 @@ export interface EvaluationReport {
   projectName: string;
   industry: Submission['industry'];
   round: Submission['round'];
+  /** Optional only for reports saved before preferences were introduced. */
+  preferences?: PreferenceId[];
   stage: string;
   tone: Submission['tone'];
   score: number | null;

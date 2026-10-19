@@ -31,6 +31,7 @@ multipart 字段 `file` 和 `consent=true`。支持 `.pdf`、`.pptx`、`.docx`�
   "projectName": "拾光 AI",
   "industry": "ai",
   "round": "angel",
+  "preferences": ["technology", "growth", "financial"],
   "stage": "已有收入",
   "description": "为内容团队提供视频粗剪工具，已有早期付费客户，希望验证留存和单位经济后扩大销售。",
   "bpText": "可选的更完整项目正文",
@@ -42,6 +43,8 @@ multipart 字段 `file` 和 `consent=true`。支持 `.pdf`、`.pptx`、`.docx`�
 `industry`：ai / saas / consumer / hardware / health / climate / fintech / other。
 
 `round`：seed / angel / pre-a / a / b / growth；默认 angel。
+
+`preferences`：恰好三项且不得重复，可选 technology / growth / financial / product / team / strategy。省略时默认 `["technology", "growth", "financial"]`，兼容旧客户端。服务端从当前行业与轮次的六位专项教练中解析名单，客户端不能指定任意角色 ID、提示词或增加调用数量。
 
 `stage`：想法阶段 / 已有原型 / 已有用户 / 已有收入 / 规模增长。
 
@@ -60,7 +63,7 @@ multipart 字段 `file` 和 `consent=true`。支持 `.pdf`、`.pptx`、`.docx`�
 只有任务所属会话用户能访问，其他用户与不存在 / 过期任务均返回 404。
 
 - `running`：返回实际完成评审的数量。
-- `done`：附带 `report`，包含 mode、industry、round、score、coverage、verdict、dimensions、investors、missingInvestors、actions、disclaimer。
+- `done`：附带 `report`，包含 mode、industry、round、preferences、score、coverage、verdict、dimensions、investors、missingInvestors、actions、disclaimer。缺席名单来自本次所选教练组合。
 - `failed`：附带安全的 `error.code` 与 `error.message`，不转发服务商原始响应。
 
 报告不包含完整项目正文或原始文件。原文摘录会存在于单项依据中。

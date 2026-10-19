@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { onShareAppMessage, onShareTimeline } from '@dcloudio/uni-app';
-import { FUNDING_ROUNDS, INDUSTRIES, INVESTORS, createDemoReport } from '@pitchcoach/shared';
+import {
+  FUNDING_ROUNDS,
+  INDUSTRIES,
+  INVESTOR_ROSTER,
+  PREFERENCES,
+  createDemoReport,
+  getPanel,
+} from '@pitchcoach/shared';
 import type { IndustryId, RoundId } from '@pitchcoach/shared';
 import PageHeader from '@/components/PageHeader.vue';
 import BottomNav from '@/components/BottomNav.vue';
@@ -12,6 +19,8 @@ const start = (industry?: IndustryId, round?: RoundId) =>
     url: `/pages/pitch/index?industry=${industry || 'ai'}&round=${round || 'angel'}`,
   });
 const demo = () => openReport(createDemoReport());
+const previewPanel = getPanel('ai', 'angel');
+const previewInvestor = previewPanel.find((investor) => investor.preference === 'financial')!;
 const investors = () => uni.navigateTo({ url: '/pages/investors/index' });
 onShareAppMessage(() => ({
   title: '你的项目，敢让 AI 投委会看一眼吗？',
@@ -35,7 +44,7 @@ onShareTimeline(() => ({ title: '先被 AI 问倒，再去见投资人。' }));
       >
       <view class="hero-meta"
         ><text>8 个行业</text><text class="meta-dot">·</text><text>6 个融资轮次</text
-        ><text class="meta-dot">·</text><text>3 位 AI 投资人</text></view
+        ><text class="meta-dot">·</text><text>{{ INVESTOR_ROSTER.length }} 位 AI 投资人</text></view
       >
     </view>
 
@@ -45,15 +54,17 @@ onShareTimeline(() => ({ title: '先被 AI 问倒，再去见投资人。' }));
         ><view class="preview-tag">示例报告 ↗</view></view
       >
       <view class="preview-body"
-        ><view class="preview-quote">“你的梦想很贵，<br />先让我看看账本。”</view
+        ><view class="preview-quote">“{{ previewInvestor.opening }}”</view
         ><view class="stamp">再<br />打磨</view></view
       >
       <view class="preview-divider" />
       <view class="preview-bottom"
-        ><view class="preview-avatar">H</view
+        ><view class="preview-avatar">{{ previewInvestor.mark }}</view
         ><view class="preview-investor"
-          ><text>何算</text
-          ><text class="preview-investor-title">财务理性派 · 虚构 AI 投资人</text></view
+          ><text>{{ previewInvestor.name }}</text
+          ><text class="preview-investor-title"
+            >{{ previewInvestor.title }} · 虚构 AI 投资人</text
+          ></view
         ><text class="preview-arrow">↗</text></view
       >
       <view class="preview-orbit" />
@@ -63,6 +74,10 @@ onShareTimeline(() => ({ title: '先被 AI 问倒，再去见投资人。' }));
       <text>把项目交给投委会</text><text class="button-arrow">↗</text>
     </button>
     <text class="start-hint">说清你在做什么。剩下的，交给提问。</text>
+    <button class="coach-roster-link" @click="investors">
+      {{ FUNDING_ROUNDS.length }} 轮 × {{ INDUSTRIES.length }} 领域 × {{ PREFERENCES.length }} 偏好
+      · 每场匹配 3 位专项教练 ↗
+    </button>
 
     <view class="section-head"
       ><view
@@ -110,16 +125,9 @@ onShareTimeline(() => ({ title: '先被 AI 问倒，再去见投资人。' }));
       ><button class="link" @click="investors">认识他们 ↗</button></view
     >
     <view class="committee-preview">
-      <view
-        v-for="id in ['ai-partner', 'angel-coach', 'finance-partner']"
-        :key="id"
-        class="committee-person"
-        ><InvestorAvatar :investor="INVESTORS[id]" /><text class="person-name">{{
-          INVESTORS[id].name
-        }}</text
-        ><text class="person-title">{{
-          id === 'angel-coach' ? '天使轮验证教练' : INVESTORS[id].title
-        }}</text></view
+      <view v-for="person in previewPanel" :key="person.id" class="committee-person"
+        ><InvestorAvatar :investor="person" /><text class="person-name">{{ person.name }}</text
+        ><text class="person-title">{{ person.title }}</text></view
       >
     </view>
     <view class="philosophy"
@@ -140,6 +148,12 @@ onShareTimeline(() => ({ title: '先被 AI 问倒，再去见投资人。' }));
 </template>
 
 <style scoped>
+.coach-roster-link {
+  font-size: 10px;
+  color: #688454;
+  margin: 16px auto 0;
+  line-height: 1.8;
+}
 .round-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

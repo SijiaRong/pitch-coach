@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { FUNDING_ROUNDS, INDUSTRIES, INVESTOR_ROSTER, PREFERENCES } from '@pitchcoach/shared';
 import PageHeader from '@/components/PageHeader.vue';
 function copyRepo() {
   uni.setClipboardData({ data: 'https://github.com/SijiaRong/pitch-coach' });
@@ -16,9 +17,10 @@ function copyRepo() {
     <view class="about-section"
       ><view class="about-section-title">它怎么打分</view
       ><text
-        >投委会由行业主审、对应融资轮次的教练与财务理性派组成，分别审阅八个维度。8
-        个行业与种子轮、天使轮、Pre-A、A 轮、B 轮、C 轮及以后的 6
-        个轮次组合，影响角色、提问标准和评分权重。产品阶段单独填写，不与融资轮次混用。</text
+        >{{ FUNDING_ROUNDS.length }} 个融资轮次 × {{ INDUSTRIES.length }} 个领域 ×
+        {{ PREFERENCES.length }} 种投资偏好，共 {{ INVESTOR_ROSTER.length }} 位专项 AI 教练。
+        每场邀请三种不同偏好的教练，分别审阅八个维度；可在提交页更换组合。行业与轮次影响证据要求和评分权重，偏好影响追问重点。
+        产品阶段单独填写，不与融资轮次混用。角色数量代表专项评审定位，不代表同等数量的独立训练模型。</text
       ><text
         >单项取有效评审分数的平均值，再按行业与轮次组合后的权重计算参考分。没有相关资料的维度标为“待补”，不按零分处理。评分证据覆盖低于
         60%，或只有一位投资人完成时，结论为“资料不足”。只有三人全部完成、至少两人愿意推进且证据覆盖达到
