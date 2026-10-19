@@ -1,4 +1,10 @@
-import { DIMENSIONS, VOTE_LABELS, getPanel, getRound, getWeights } from './catalog';
+import { DIMENSIONS, getPanel, getRound, getWeights } from './catalog';
+import {
+  aggregateDiagnostics,
+  decisionLabel,
+  publicDiagnosticSummary,
+  verifyDiagnostics,
+} from './diagnostics';
 import type {
   DimensionReview,
   EvaluationReport,
@@ -16,6 +22,7 @@ export function verifyEvidence(content: ReviewContent, source: string): ReviewCo
   const normalized = normalize(source);
   return {
     ...content,
+    diagnostics: verifyDiagnostics(content.diagnostics, source),
     dimensions: content.dimensions.map((item) => {
       if (item.score === null) return { ...item, evidence: '' };
       if (normalize(item.evidence).length >= 4 && normalized.includes(normalize(item.evidence)))
@@ -57,7 +64,14 @@ export function prepareReview(
   return {
     ...verified,
     ...metrics,
-    vote: metrics.coverage < 60 ? 'insufficient' : verified.vote,
+    vote: verified.diagnostics.redFlags.length
+      ? 'pass'
+      : metrics.coverage < 60
+        ? 'insufficient'
+        : verified.vote === 'invest' &&
+            (verified.diagnostics.orangeFlags.length || verified.diagnostics.assumptions.length)
+          ? 'watch'
+          : verified.vote,
     investorId,
     model,
   };
@@ -92,7 +106,8 @@ export function aggregateReport(
     .filter((investor) => !reviews.some((review) => review.investorId === investor.id))
     .map((investor) => investor.id);
   const votes = reviews.map((review) => review.vote);
-  const verdict =
+  const diagnostics = aggregateDiagnostics(reviews);
+  const baseVerdict =
     coverage < 60 ||
     reviews.length < 2 ||
     votes.filter((vote) => vote === 'insufficient').length >= 2
@@ -104,14 +119,58 @@ export function aggregateReport(
         : votes.filter((vote) => vote === 'pass').length >= 2
           ? 'pass'
           : 'watch';
-  const actions = [...dimensions]
+  const verdict = diagnostics.redFlags.length
+    ? 'pass'
+    : baseVerdict === 'invest' && (diagnostics.orangeFlags.length || diagnostics.assumptions.length)
+      ? 'watch'
+      : baseVerdict;
+  const diagnosticSummary = publicDiagnosticSummary({ verdict, diagnostics });
+  const decisionReasons = [
+    diagnostics.redFlags.length
+      ? `${diagnostics.redFlags.length} 项阻断性红旗（${diagnosticSummary.red}）：解除前暂停推进；参考分不能抵消阻断。`
+      : '本次未识别到有原文依据的阻断性红旗，不代表尽调已通过。',
+    diagnostics.orangeFlags.length
+      ? `${diagnostics.orangeFlags.length} 项橙旗尚待回答（${diagnosticSummary.orange}），先补证再议。`
+      : '',
+    diagnostics.assumptions.length
+      ? `${diagnostics.assumptions.length} 项关键假设未经验证（${diagnosticSummary.assumptions}），验证前不升级为愿意推进。`
+      : '',
+    diagnostics.failureModes.length
+      ? `${diagnostics.failureModes.length} 条条件性失败路径：${diagnosticSummary.death}`
+      : '',
+  ].filter(Boolean);
+  const dimensionActions = [...dimensions]
     .sort((a, b) => (a.score ?? -1) - (b.score ?? -1) || b.weight - a.weight)
     .slice(0, 4)
-    .map((dimension, index) => ({
+    .map((dimension) => ({
       dimension: dimension.name,
       task: dimension.action,
-      priority: index + 1,
     }));
+  const candidates = [
+    ...diagnostics.redFlags.map((flag) => ({
+      dimension: `解除红旗 · ${flag.title}`,
+      task: flag.remedy,
+    })),
+    ...diagnostics.orangeFlags.map((flag) => ({
+      dimension: `澄清橙旗 · ${flag.title}`,
+      task: flag.remedy,
+    })),
+    ...diagnostics.assumptions.map((item) => ({
+      dimension: '验证关键假设',
+      task: `${item.test} 通过标准：${item.passCriterion}`,
+    })),
+    ...dimensionActions,
+  ];
+  const seenTasks = new Set<string>();
+  const actions = candidates
+    .filter((item) => {
+      const key = `${item.dimension}:${item.task}`;
+      if (seenTasks.has(key)) return false;
+      seenTasks.add(key);
+      return true;
+    })
+    .slice(0, 4)
+    .map((item, index) => ({ ...item, priority: index + 1 }));
   const sharpest = [...reviews].sort((a, b) => (a.score ?? 101) - (b.score ?? 101))[0];
   return {
     id: options.id,
@@ -127,8 +186,14 @@ export function aggregateReport(
     score,
     coverage,
     verdict,
-    headline: verdict === 'insufficient' ? '故事可以很大，证据还要补上。' : sharpest.oneLiner,
-    summary: `${getRound(submission.round).name}投委会结论：${VOTE_LABELS[verdict]}。${reviews.length} 位 AI 投资人完成审阅，评分证据覆盖 ${coverage}%。${missingInvestors.length ? '部分评审未完成，结论已保守处理。' : ''}`,
+    headline: diagnostics.redFlags.length
+      ? '最大的风险，不该被总分平均掉。'
+      : verdict === 'insufficient'
+        ? '故事可以很大，证据还要补上。'
+        : sharpest.oneLiner,
+    summary: `${getRound(submission.round).name}投委会结论：${decisionLabel({ verdict, diagnostics })}。红旗 ${diagnostics.redFlags.length} 项、橙旗 ${diagnostics.orangeFlags.length} 项、失败路径 ${diagnostics.failureModes.length} 条、关键假设 ${diagnostics.assumptions.length} 项。${reviews.length} 位 AI 投资人完成审阅，评分证据覆盖 ${coverage}%。${missingInvestors.length ? '部分评审未完成，结论已保守处理。' : ''}`,
+    diagnostics,
+    decisionReasons,
     dimensions,
     investors: reviews,
     missingInvestors,

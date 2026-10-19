@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { emptyDiagnostics } from './diagnostic-schema';
 import {
   DEFAULT_PREFERENCES,
   DIMENSIONS,
@@ -36,6 +37,7 @@ const content = (score = 80): ReviewContent => ({
     action: '补充可核验的客户记录。',
   })),
   questions: ['客户为什么持续使用？', '多久能够收回获客成本？'],
+  diagnostics: emptyDiagnostics(),
   risks: ['材料中的收入尚未独立核验。'],
 });
 const panel = (value = content()) =>

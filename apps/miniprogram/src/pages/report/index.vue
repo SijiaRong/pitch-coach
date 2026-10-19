@@ -1,15 +1,25 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue';
 import { onLoad, onShareAppMessage, onShareTimeline } from '@dcloudio/uni-app';
-import { INVESTORS, VOTE_LABELS, getIndustry, getPreference, getRound } from '@pitchcoach/shared';
+import {
+  INVESTORS,
+  VOTE_LABELS,
+  decisionLabel,
+  getIndustry,
+  getPreference,
+  getRound,
+  publicDiagnosticSummary,
+} from '@pitchcoach/shared';
 import type { EvaluationReport } from '@pitchcoach/shared';
 import PageHeader from '@/components/PageHeader.vue';
 import InvestorAvatar from '@/components/InvestorAvatar.vue';
+import RiskDiagnosis from '@/components/RiskDiagnosis.vue';
 import { findReport } from '@/lib/storage';
-import { drawPoster, savePoster } from '@/lib/poster';
+import { drawPoster, savePoster, POSTER_CANVAS_ID } from '@/lib/poster';
+import { sharePoster } from '@/lib/share';
 
 const report = ref<EvaluationReport>();
-const tab = ref('overview');
+const tab = ref('risks');
 const expandedDimension = ref('');
 const expandedInvestor = ref('');
 const posterOpen = ref(false);
@@ -17,6 +27,11 @@ const posterPath = ref('');
 const anonymous = ref(true);
 const posterBusy = ref(false);
 const posterError = ref('');
+const shareHint = ref('在微信图片分享菜单中选择“朋友圈”，发布前仍可确认。');
+const shareBusy = ref(false);
+const diagnosticSummary = computed(() =>
+  report.value ? publicDiagnosticSummary(report.value) : undefined,
+);
 const industry = computed(() => (report.value ? getIndustry(report.value.industry) : undefined));
 const roundName = computed(() => getRound(report.value?.round || 'angel').name);
 
@@ -38,6 +53,7 @@ async function makePoster() {
   posterOpen.value = true;
   posterBusy.value = true;
   posterError.value = '';
+  shareHint.value = '在微信图片分享菜单中选择“朋友圈”，发布前仍可确认。';
   posterPath.value = '';
   await nextTick();
   try {
@@ -59,6 +75,23 @@ async function save() {
     uni.showToast({ title: '海报已保存', icon: 'success' });
   } catch (cause) {
     posterError.value = cause instanceof Error ? cause.message : '保存失败';
+  }
+}
+async function share() {
+  if (!posterPath.value || shareBusy.value) return;
+  shareBusy.value = true;
+  posterError.value = '';
+  try {
+    const result = await sharePoster(posterPath.value);
+    if (result === 'preview')
+      shareHint.value =
+        '当前环境无法打开微信分享菜单，已打开大图预览。请在手机微信中分享；也可使用下方保存图片。';
+    if (result === 'opened') shareHint.value = '请选择“朋友圈”。若菜单没有此项，请更新微信后重试。';
+    if (result === 'cancelled') shareHint.value = '已取消分享，海报仍在这里。';
+  } catch (cause) {
+    posterError.value = cause instanceof Error ? cause.message : '分享菜单暂不可用';
+  } finally {
+    shareBusy.value = false;
   }
 }
 function copyActions() {
@@ -109,7 +142,7 @@ const retry = () =>
             ><text class="score-number mono">{{ report.score ?? '—' }}</text
             ><text class="score-unit">/ 100</text></view
           ><view class="verdict-stamp" :class="report.verdict">{{
-            VOTE_LABELS[report.verdict]
+            decisionLabel(report)
           }}</view></view
         ><view class="score-bottom"
           ><text>行业加权参考分</text><text>证据覆盖 {{ report.coverage }}%</text></view
@@ -118,6 +151,21 @@ const retry = () =>
       <view class="verdict-quote"
         ><text class="quote-mark">“</text><text>{{ report.headline }}</text></view
       ><text class="report-summary">{{ report.summary }}</text>
+      <view class="diagnosis-conclusion" :class="{ blocked: report.diagnostics?.redFlags.length }">
+        <text class="diagnosis-counts">{{ diagnosticSummary?.counts }}</text>
+        <text
+          v-for="reason in report.decisionReasons || []"
+          :key="reason"
+          class="decision-reason"
+          >{{ reason }}</text
+        >
+        <text v-if="!report.diagnostics" class="decision-reason"
+          >旧报告尚未完成专项风险检查，建议重新评估。</text
+        >
+      </view>
+      <button class="secondary conclusion-share" @click="makePoster">
+        把这份诊断分享到朋友圈 ↗
+      </button>
       <view v-if="report.missingInvestors.length" class="notice partial-notice"
         >部分投资人未完成审阅：{{
           report.missingInvestors.map((id) => INVESTORS[id]?.name || id).join('、')
@@ -130,6 +178,7 @@ const retry = () =>
       <view class="report-tabs"
         ><button
           v-for="item in [
+            { id: 'risks', label: '风险诊断' },
             { id: 'overview', label: '八维拆解' },
             { id: 'committee', label: '投委会发言' },
             { id: 'actions', label: '下一步做什么' },
@@ -141,6 +190,7 @@ const retry = () =>
           {{ item.label }}
         </button></view
       >
+      <RiskDiagnosis v-if="tab === 'risks'" :diagnostics="report.diagnostics" />
 
       <view v-if="tab === 'overview'" class="dimensions"
         ><text class="caption dimension-tip">点开每个维度，看依据和改进建议。</text
@@ -232,7 +282,7 @@ const retry = () =>
 
       <view class="report-disclaimer">{{ report.disclaimer }}</view>
       <button class="primary lime poster-cta" @click="makePoster">
-        <text>把这句真话，做成朋友圈海报</text><text>↗</text></button
+        <text>把这份诊断分享到朋友圈</text><text>↗</text></button
       ><text class="share-note">先预览，再分享。默认隐藏项目名称。</text
       ><button class="back-home" @click="uni.reLaunch({ url: '/pages/index/index' })">
         ← 返回融资教练
@@ -241,15 +291,15 @@ const retry = () =>
       <view v-if="posterOpen" class="poster-overlay"
         ><view class="poster-dialog"
           ><view class="poster-dialog-heading"
-            ><text>给朋友圈，一句真话。</text
+            ><text>给朋友圈，一份真话。</text
             ><button :disabled="posterBusy" aria-label="关闭海报" @click="posterOpen = false">
               ×
             </button></view
-          ><text class="poster-caption">请确认画面内容适合公开后再保存分享。</text
+          ><text class="poster-caption">红橙旗、死亡预言、未验假设，一起带上。确认后分享。</text
           ><view class="poster-preview"
             ><canvas
-              id="share-poster"
-              canvas-id="share-poster"
+              :id="POSTER_CANVAS_ID"
+              :canvas-id="POSTER_CANVAS_ID"
               class="share-canvas"
               :disable-scroll="true"
             /><image
@@ -263,12 +313,20 @@ const retry = () =>
             <text>{{ anonymous ? '☑' : '☐' }} 隐藏项目名称</text
             ><text>{{ anonymous ? '已匿名' : '显示原名称' }}</text></button
           ><view v-if="posterError" class="error-box">{{ posterError }}</view
-          ><button class="primary lime" :disabled="posterBusy || !posterPath" @click="save">
-            保存海报</button
-          ><text class="poster-caption bottom"
-            >保存后可发朋友圈；原始 BP 与完整报告不会附在海报中。</text
-          ></view
-        ></view
+          ><button
+            class="primary lime"
+            :disabled="posterBusy || shareBusy || !posterPath"
+            @click="share"
+          >
+            {{ shareBusy ? '正在打开分享…' : '分享到朋友圈 ↗' }}</button
+          ><text class="poster-caption bottom">{{ shareHint }}</text>
+          <button class="save-secondary" :disabled="posterBusy || !posterPath" @click="save">
+            保存图片到本地
+          </button>
+          <text class="poster-caption bottom"
+            >海报仅含风险类别与条件性情景；BP 原文、客户与金额不进入画面。</text
+          >
+        </view></view
       >
     </template>
     <view v-else class="empty-state"
@@ -743,8 +801,8 @@ const retry = () =>
   margin-top: 10px;
 }
 .poster-preview {
-  width: 300px;
-  height: 460px;
+  width: 225px;
+  height: 510px;
   max-width: 100%;
   margin: 14px auto 0;
   position: relative;
@@ -753,7 +811,10 @@ const retry = () =>
 }
 .share-canvas {
   width: 300px;
-  height: 460px;
+  height: 680px;
+  position: fixed;
+  left: -1000px;
+  top: 0;
 }
 .poster-image {
   position: absolute;
@@ -782,5 +843,37 @@ const retry = () =>
 .anonymous-toggle text:last-child {
   font-size: 9px;
   color: #a5ad95;
+}
+.diagnosis-conclusion {
+  padding: 14px 15px;
+  border-radius: 10px;
+  background: #edf0e2;
+  margin: 15px 0 11px;
+}
+.diagnosis-conclusion.blocked {
+  background: #f7ebe4;
+  border-left: 3px solid #b35a4a;
+}
+.diagnosis-counts {
+  display: block;
+  color: #536c49;
+  font-size: 11px;
+  font-weight: 700;
+}
+.decision-reason {
+  display: block;
+  font-size: 10px;
+  color: #7d866f;
+  line-height: 1.9;
+  margin-top: 6px;
+}
+.conclusion-share {
+  font-size: 11px;
+}
+.save-secondary {
+  width: 100%;
+  font-size: 11px;
+  color: #789061;
+  padding: 13px 0 3px;
 }
 </style>

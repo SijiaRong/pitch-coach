@@ -63,10 +63,21 @@ multipart 字段 `file` 和 `consent=true`。支持 `.pdf`、`.pptx`、`.docx`�
 只有任务所属会话用户能访问，其他用户与不存在 / 过期任务均返回 404。
 
 - `running`：返回实际完成评审的数量。
-- `done`：附带 `report`，包含 mode、industry、round、preferences、score、coverage、verdict、dimensions、investors、missingInvestors、actions、disclaimer。缺席名单来自本次所选教练组合。
+- `done`：附带 `report`，包含 mode、industry、round、preferences、score、coverage、verdict、diagnostics、decisionReasons、dimensions、investors、missingInvestors、actions、disclaimer。缺席名单来自本次所选教练组合。
 - `failed`：附带安全的 `error.code` 与 `error.message`，不转发服务商原始响应。
 
 报告不包含完整项目正文或原始文件。原文摘录会存在于单项依据中。
+
+新模型响应必须包含 `diagnostics` 的四个数组，允许为空，但不能省略整个专项检查：
+
+- `redFlags`：topic、title、detail、basis=`explicit_statement`、逐字 evidence、question、remedy。引用匹配失败则降为待核验橙旗，且不保留无依据指控；匹配成功仍不等于已独立核实。
+- `orangeFlags`：topic、title、detail、evidence（无相关原文时为空）、missing、question、remedy。
+- `assumptions`：topic、statement、basis=`stated/inferred`、evidence、whyCritical、test、passCriterion。无法匹配的 stated 引用改标为 inferred。
+- `failureModes`：mechanism、basedOn（关联本次风险 topic）、condition（以“若/如果”开头）、chain、earlySignal、prevention。不关联本次有效诊断的失败推演被移除。
+
+报告聚合诊断为每项增加 `investorIds`，并带 `reviewedInvestors` 和 `gate=blocked/clarify/validate/clear`。`gate` 是诊断状态，不能替代同时显示的证据覆盖、缺席评审与最终结论。任一有效红旗强制 `verdict=pass`，显示“红旗阻断”；关键橙旗或假设阻止 `invest`，但不覆盖已有的资料不足或暂不投资结论。`decisionReasons` 说明四类问题如何影响结论。报告仍为 `version=1`；兼容旧本机历史时缺失 `diagnostics` 表示“未检查”，不表示空数组。
+
+公开海报仅提取诊断数量、受控类别名称与预设的条件性失败文案，不传出详细诊断、原文摘录、投资人追问或报告 ID。完整私密诊断只保留在报告内。
 
 ## DELETE /api/evaluations/:id
 

@@ -9,6 +9,8 @@ import {
   STAGES,
 } from './catalog';
 import type { PreferenceId } from './catalog';
+import { diagnosticsSchema } from './diagnostic-schema';
+import type { ReportDiagnostics } from './diagnostic-schema';
 
 export const panelPreferencesSchema = z
   .array(z.enum(PREFERENCE_IDS))
@@ -50,6 +52,7 @@ export const reviewContentSchema = z.object({
     ),
   questions: z.array(z.string().trim().min(1).max(180)).min(2).max(4),
   risks: z.array(z.string().trim().min(1).max(180)).min(1).max(4),
+  diagnostics: diagnosticsSchema,
 });
 export type ReviewContent = z.infer<typeof reviewContentSchema>;
 export type DimensionReview = z.infer<typeof dimensionReviewSchema>;
@@ -77,6 +80,9 @@ export interface EvaluationReport {
   verdict: ReviewContent['vote'];
   headline: string;
   summary: string;
+  /** Absent only on reports created before structured risk diagnosis. */
+  diagnostics?: ReportDiagnostics;
+  decisionReasons?: string[];
   dimensions: (DimensionReview & { name: string; weight: number })[];
   investors: InvestorReview[];
   missingInvestors: string[];

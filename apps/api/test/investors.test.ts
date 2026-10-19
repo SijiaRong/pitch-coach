@@ -6,6 +6,7 @@ import {
   getSpecialist,
   submissionSchema,
 } from '@pitchcoach/shared';
+import { emptyDiagnostics } from '@pitchcoach/shared';
 import type { ReviewContent } from '@pitchcoach/shared';
 import { createApp } from '../src/app';
 import { issueToken } from '../src/auth';
@@ -36,6 +37,7 @@ const review: ReviewContent = {
     action: '补充可核验记录。',
   })),
   questions: ['客户为什么持续使用？', '现金如何支持下一项验证？'],
+  diagnostics: emptyDiagnostics(),
   risks: ['资料尚未独立尽调。'],
 };
 

@@ -1,8 +1,9 @@
-import { VOTE_LABELS, getIndustry, getRound } from '@pitchcoach/shared';
+import { getIndustry, getRound, publicDiagnosticSummary } from '@pitchcoach/shared';
 import type { EvaluationReport } from '@pitchcoach/shared';
 
 export const POSTER_WIDTH = 300;
-export const POSTER_HEIGHT = 460;
+export const POSTER_HEIGHT = 680;
+export const POSTER_CANVAS_ID = 'risk-poster-v2';
 
 function wrap(context: UniApp.CanvasContext, value: string, maxWidth: number, maxLines: number) {
   const lines: string[] = [];
@@ -23,9 +24,10 @@ function wrap(context: UniApp.CanvasContext, value: string, maxWidth: number, ma
 
 export function drawPoster(report: EvaluationReport, anonymous: boolean): Promise<string> {
   return new Promise((resolve, reject) => {
-    const ctx = uni.createCanvasContext('share-poster');
+    const ctx = uni.createCanvasContext(POSTER_CANVAS_ID);
+    const diagnostic = publicDiagnosticSummary(report);
     ctx.setFillStyle('#f6f6ec');
-    ctx.fillRect(0, 0, 300, 460);
+    ctx.fillRect(0, 0, POSTER_WIDTH, POSTER_HEIGHT);
     ctx.setFillStyle('#263d31');
     ctx.fillRect(0, 0, 300, 70);
     ctx.setFontSize(19);
@@ -39,7 +41,11 @@ export function drawPoster(report: EvaluationReport, anonymous: boolean): Promis
     ctx.fillText('MY STARTUP, UNDER REVIEW', 22, 94);
     ctx.setFontSize(16);
     ctx.setFillStyle('#263d31');
-    ctx.fillText(anonymous ? '某创业项目的融资体检' : report.projectName, 22, 119);
+    ctx.fillText(
+      wrap(ctx, anonymous ? '某创业项目的融资体检' : report.projectName, 256, 1)[0],
+      22,
+      119,
+    );
     ctx.setFontSize(9);
     ctx.setFillStyle('#8b987b');
     ctx.fillText(
@@ -54,18 +60,40 @@ export function drawPoster(report: EvaluationReport, anonymous: boolean): Promis
     ctx.setFillStyle('#929f7d');
     ctx.fillText('/ 100', 109, 211);
     ctx.setFontSize(16);
-    ctx.setFillStyle('#4f6346');
-    ctx.fillText(VOTE_LABELS[report.verdict], 191, 194);
+    ctx.setFillStyle(report.diagnostics?.redFlags.length ? '#aa4c3e' : '#4f6346');
+    ctx.fillText(diagnostic.label, 192, 194);
     ctx.setFontSize(8);
     ctx.setFillStyle('#9aa48b');
-    ctx.fillText(`证据覆盖 ${report.coverage}% · 参考分`, 23, 232);
+    ctx.fillText(
+      `证据覆盖 ${report.coverage}% · ${report.investors.length}/3 位完成评审${report.missingInvestors.length ? ' · 部分结果' : ''}`,
+      23,
+      232,
+    );
     ctx.setFillStyle('#e2e7d5');
     ctx.fillRect(22, 248, 256, 1);
-    ctx.setFontSize(20);
+    ctx.setFontSize(18);
     ctx.setFillStyle('#263d31');
-    const lines = wrap(ctx, `“${report.headline}”`, 252, 3);
-    lines.forEach((line, index) => ctx.fillText(line, 22, 279 + index * 29));
-    const yStart = 301 + Math.max(0, lines.length - 1) * 24;
+    const lines = wrap(ctx, `“${diagnostic.headline}”`, 252, 2);
+    lines.forEach((line, index) => ctx.fillText(line, 22, 278 + index * 25));
+    ctx.setFontSize(10);
+    ctx.setFillStyle('#5a6f4c');
+    ctx.fillText(diagnostic.counts, 22, 331);
+    const riskRow = (label: string, value: string, y: number, color: string) => {
+      ctx.setFillStyle(color);
+      ctx.fillRect(22, y - 10, 3, 12);
+      ctx.setFontSize(10);
+      ctx.fillText(label, 32, y);
+      ctx.setFillStyle('#536a4c');
+      ctx.setFontSize(11);
+      wrap(ctx, value, 244, 2).forEach((line, index) =>
+        ctx.fillText(line, 32, y + 18 + index * 15),
+      );
+    };
+    riskRow('阻断性红旗', diagnostic.red, 360, '#ae5547');
+    riskRow('投资人会追问的橙旗', diagnostic.orange || '专项检查未完成', 412, '#b68c3c');
+    riskRow('未经验证的关键假设', diagnostic.assumptions || '专项检查未完成', 464, '#778660');
+    riskRow('死亡预言 · 条件性失败情景', diagnostic.death, 516, '#364e41');
+    const yStart = 582;
     report.dimensions.forEach((dimension, index) => {
       const col = index % 2,
         row = Math.floor(index / 2),
@@ -84,21 +112,22 @@ export function drawPoster(report: EvaluationReport, anonymous: boolean): Promis
       ctx.fillText(dimension.score === null ? '待补' : String(dimension.score), x + 93, y);
     });
     ctx.setFillStyle('#e4e8d8');
-    ctx.fillRect(22, 421, 256, 1);
+    ctx.fillRect(22, 641, 256, 1);
     ctx.setFontSize(8);
     ctx.setFillStyle('#8e9a7f');
-    ctx.fillText('AI 模拟评估，仅供项目自检 · 非真实投资意向', 22, 440);
+    ctx.fillText('资料陈述未经独立尽调 · 风险可能被遗漏', 22, 657);
+    ctx.fillText('AI 模拟评估，仅供自检 · 非真实投资意向', 22, 671);
     if (report.mode === 'demo') {
       ctx.setFontSize(8);
-      ctx.fillText('DEMO', 250, 440);
+      ctx.fillText('DEMO', 250, 671);
     }
     ctx.draw(false, () =>
       uni.canvasToTempFilePath({
-        canvasId: 'share-poster',
-        width: 300,
-        height: 460,
-        destWidth: 900,
-        destHeight: 1380,
+        canvasId: POSTER_CANVAS_ID,
+        width: POSTER_WIDTH,
+        height: POSTER_HEIGHT,
+        destWidth: POSTER_WIDTH * 3,
+        destHeight: POSTER_HEIGHT * 3,
         fileType: 'png',
         success: (result) => resolve(result.tempFilePath),
         fail: () => reject(new Error('海报生成失败，请重试')),

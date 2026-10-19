@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_PREFERENCES, DIMENSIONS, EXAMPLES, getPanel } from '@pitchcoach/shared';
+import {
+  DEFAULT_PREFERENCES,
+  DIMENSIONS,
+  EXAMPLES,
+  createDemoReport,
+  getPanel,
+} from '@pitchcoach/shared';
+import { emptyDiagnostics } from '@pitchcoach/shared';
 import type { ReviewContent, Submission } from '@pitchcoach/shared';
 import { createApp } from '../src/app';
 import { issueToken } from '../src/auth';
@@ -37,6 +44,7 @@ const review: ReviewContent = {
     action: '提供客户留存记录。',
   })),
   questions: ['客户如何获知产品？', '如何验证持续付费？'],
+  diagnostics: emptyDiagnostics(),
   risks: ['财务数据尚未核验。'],
 };
 const reviewer: Reviewer = async () => ({ content: review, model: 'test-double' });
@@ -150,6 +158,44 @@ describe('评估 API', () => {
 });
 
 describe('模型适配与任务退化', () => {
+  it('完整任务链保留四类诊断，红旗覆盖高分与其他投资票', async () => {
+    const diagnostics = createDemoReport().investors[0].diagnostics;
+    const jobs = new EvaluationJobs(config, async (_submission, investor) => ({
+      content: {
+        ...review,
+        vote: 'invest',
+        diagnostics: investor.preference === 'technology' ? diagnostics : emptyDiagnostics(),
+      },
+      model: 'test-only',
+    }));
+    try {
+      const job = jobs.create('diagnostic-owner', input);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const result = jobs.get(job.id, 'diagnostic-owner');
+      expect(result.status).toBe('done');
+      expect(result.report?.verdict).toBe('pass');
+      expect(result.report?.diagnostics?.redFlags).toHaveLength(1);
+      expect(result.report?.diagnostics?.orangeFlags).toHaveLength(1);
+      expect(result.report?.diagnostics?.failureModes).toHaveLength(1);
+      expect(result.report?.diagnostics?.assumptions).toHaveLength(1);
+      expect(result.report?.diagnostics?.redFlags[0].investorIds).toEqual([getPanel('ai')[0].id]);
+    } finally {
+      jobs.close();
+    }
+  });
+  it('模型漏掉专项诊断时明确报错，不把未检查伪装成没有风险', async () => {
+    const { diagnostics, ...legacy } = review;
+    const fetcher = (async () =>
+      new Response(
+        JSON.stringify({
+          choices: [{ finish_reason: 'stop', message: { content: JSON.stringify(legacy) } }],
+        }),
+      )) as typeof fetch;
+    const run = createReviewer(loadConfig({ NODE_ENV: 'test', AI_API_KEY: 'test-only' }), fetcher);
+    await expect(run(input, getPanel('ai')[0], new AbortController().signal)).rejects.toMatchObject(
+      { code: 'AI_INVALID_RESPONSE' },
+    );
+  });
   it('仅传服务端配置的模型参数，正确解析 JSON mode', async () => {
     const fetcher = vi.fn<typeof fetch>(
       async () =>

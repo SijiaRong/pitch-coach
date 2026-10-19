@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
-import { VOTE_LABELS, createDemoReport, getIndustry, getRound } from '@pitchcoach/shared';
+import {
+  decisionLabel,
+  publicDiagnosticSummary,
+  createDemoReport,
+  getIndustry,
+  getRound,
+} from '@pitchcoach/shared';
 import type { EvaluationReport } from '@pitchcoach/shared';
 import PageHeader from '@/components/PageHeader.vue';
 import BottomNav from '@/components/BottomNav.vue';
@@ -84,10 +90,13 @@ function remove(id: string) {
           ><view
             ><text class="history-project-name">{{ report.projectName }}</text
             ><text class="history-verdict"
-              >{{ VOTE_LABELS[report.verdict] }} · 证据覆盖 {{ report.coverage }}%</text
+              >{{ decisionLabel(report) }} · 证据覆盖 {{ report.coverage }}%</text
             ></view
           ><view class="history-score mono">{{ report.score ?? '—' }}<text>/100</text></view></view
-        ><view class="history-quote">“{{ report.headline }}”</view></button
+        ><view class="history-quote">“{{ report.headline }}”</view>
+        <text class="history-diagnostics">{{
+          publicDiagnosticSummary(report).counts
+        }}</text></button
       ><view class="history-card-bottom"
         ><text>查看完整评估 ↗</text><button @click="remove(report.id)">删除</button></view
       ></view
@@ -101,6 +110,12 @@ function remove(id: string) {
 </template>
 
 <style scoped>
+.history-diagnostics {
+  display: block;
+  color: #8a775f;
+  font-size: 10px;
+  margin-top: 12px;
+}
 .history-heading {
   margin: 4px 0 25px;
 }

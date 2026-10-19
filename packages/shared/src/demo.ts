@@ -2,13 +2,14 @@ import { DEFAULT_PREFERENCES, DIMENSIONS, getPanel, getPreference } from './cata
 import type { IndustryId, PreferenceId, RoundId, Tone } from './catalog';
 import type { EvaluationReport, ReviewContent, Submission } from './schema';
 import { aggregateReport, prepareReview } from './scoring';
+import type { ReviewDiagnostics } from './diagnostic-schema';
 
 export const EXAMPLES: Record<IndustryId, { name: string; description: string; bp: string }> = {
   ai: {
     name: '拾光 AI',
     description:
       '我们为 10–50 人的内容团队提供 AI 视频粗剪工具，把长视频自动拆成短片。已服务 24 家付费客户，月收入 3.6 万元，帮助客户减少约 60% 粗剪时间。',
-    bp: '小范围用户访谈覆盖 40 家内容团队，其中 24 家付费。产品支持语义切片和品牌模板，客户可导出到原有剪辑工作流。目前调用第三方模型 API，没有自研模型。近三个月月收入 3.6 万元，客户月流失率 8%，平均获客成本 2400 元，单客户月均收入 1500 元，模型与交付后毛利率 55%。团队 3 人，包含两位视频算法工程师和一位内容运营负责人。拟融资 300 万元，用于 12 个月的产品与销售，目标达到 100 家付费客户。市场规模尚未做自下而上测算。',
+    bp: '小范围用户访谈覆盖 40 家内容团队，其中 24 家付费。产品支持语义切片和品牌模板，客户可导出到原有剪辑工作流。目前调用第三方模型 API，没有自研模型。近三个月月收入 3.6 万元，客户月流失率 8%，平均获客成本 2400 元，单客户月均收入 1500 元，模型与交付后毛利率 55%。团队 3 人，包含两位视频算法工程师和一位内容运营负责人。拟融资 300 万元，用于 12 个月的产品与销售，目标达到 100 家付费客户。市场规模尚未做自下而上测算。核心素材库尚无商业使用授权，授权方已明确拒绝商业使用，当前付费交付依赖该素材库且没有替代方案。',
   },
   saas: {
     name: '小店有数',
@@ -53,6 +54,75 @@ export const EXAMPLES: Record<IndustryId, { name: string; description: string; b
     bp: '访谈 50 位住户，维修商选择难、价格不透明。平台已接入 8 位维修师傅，3 个社区完成 160 单，客单价 85 元，平台抽佣 15%，售后返修率 6%。通过社区群自然获客，尚未核算补贴和客服成本。团队有社区运营与软件开发经验。拟融资 100 万元，覆盖 9 个月，目标验证 10 个社区的复制能力。缺少复购统计、服务标准与市场规模测算。',
   },
 };
+
+/** A fictional example of each diagnostic; never a judgment on arbitrary user material. */
+function demoDiagnostics(industry: IndustryId): ReviewDiagnostics {
+  return {
+    redFlags:
+      industry === 'ai'
+        ? [
+            {
+              topic: 'data',
+              basis: 'explicit_statement',
+              title: '付费交付依赖被拒绝授权的素材',
+              evidence:
+                '核心素材库尚无商业使用授权，授权方已明确拒绝商业使用，当前付费交付依赖该素材库且没有替代方案',
+              detail:
+                '按虚构资料的明确陈述，现有付费交付缺乏可用授权或替代方案；在解决这一交付前提之前暂停推进。这不是法律定性。',
+              question: '哪些付费功能依赖该素材库？可用授权或不依赖它的交付证据在哪里？',
+              remedy:
+                '取得明确可用的商业授权，或替换素材库并完成客户交付验收；提供授权范围与验收记录后重评。',
+            },
+          ]
+        : [],
+    orangeFlags: [
+      {
+        topic: 'economics',
+        title: '完整成本与回款口径仍未说清',
+        evidence: '',
+        detail:
+          '当前材料不足以核对每单或每客户的完整贡献利润与现金占用，不能把缺失数据当作亏损事实。',
+        missing: '获客、实施、持续服务、售后成本及回款时间的一致口径',
+        question: '把获客到回款全链路算进去，一笔收入究竟留下多少钱、占用多久现金？',
+        remedy: '选取近期真实订单或试点，逐项核对合同、成本和回款，形成可复核的单客户现金账。',
+      },
+    ],
+    assumptions: [
+      {
+        topic: 'growth',
+        statement: '现有试点或早期客户的使用价值，能在下一批同类客户中转化为持续付费。',
+        basis: 'inferred',
+        evidence: '',
+        whyCritical: '如果新增客户无法持续付费，融资目标中的规模扩大就缺少成立基础。',
+        test: '在新客户群做一轮付费与持续使用实验，单独记录承诺、实际付款、使用和续约；周期按行业采购或验证节奏设定。',
+        passCriterion: '建议事先约定目标客户数、观察周期和续约标准；达到标准且回款可复核后再扩张。',
+      },
+    ],
+    failureModes:
+      industry === 'ai'
+        ? [
+            {
+              mechanism: 'access_block',
+              basedOn: ['data'],
+              condition: '若素材授权问题持续且替代交付方案无法落地',
+              chain: '授权前提无法满足 → 付费交付受阻 → 客户退款或流失 → 商业化可能停摆。',
+              earlySignal: '授权协商无进展、交付延期增加，客户开始要求退款。',
+              prevention: '先验证可授权替代素材及交付流程；解除阻断前暂停依赖该素材的新承诺。',
+            },
+          ]
+        : [
+            {
+              mechanism: 'cash_exhaustion',
+              basedOn: ['economics', 'growth'],
+              condition: '若回款与留存验证晚于现有现金可支撑的时间',
+              chain:
+                '验证与回款滞后 → 现金消耗持续 → 关键验证被迫中断 → 项目可能在商业模式跑通前断粮。',
+              earlySignal: '回款延迟、完整贡献利润无法核对，核心里程碑连续后移。',
+              prevention: '把验证周期与采购节奏写进滚动现金预算，先做最小验证，再增加固定开支。',
+            },
+          ],
+  };
+}
 
 /** Fixed, fictional example only. Arbitrary user input never falls back to this as an AI result. */
 export function createDemoReport(
@@ -122,6 +192,7 @@ export function createDemoReport(
         '本报告使用虚构项目和固定演示评分，不是对真实项目的 AI 评估。',
         '客户留存和完整成本仍需进一步核验。',
       ],
+      diagnostics: demoDiagnostics(industry),
     };
     return prepareReview(content, investor.id, '固定演示 · 非模型调用', submission);
   });
