@@ -11,4 +11,8 @@ dist/
 .vscode/
 coverage/
 .artifacts/
+.data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
 project.private.config.json

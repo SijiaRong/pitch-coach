@@ -5,6 +5,11 @@ import { isPrivacyRefusal } from './privacy';
 export const POSTER_WIDTH = 300;
 export const POSTER_HEIGHT = 680;
 export const POSTER_CANVAS_ID = 'risk-poster-v2';
+export interface PosterEntry {
+  codePath: string;
+  label?: string;
+}
+export const posterHeight = (entry?: PosterEntry) => (entry ? 812 : POSTER_HEIGHT);
 
 function wrap(context: UniApp.CanvasContext, value: string, maxWidth: number, maxLines: number) {
   const lines: string[] = [];
@@ -23,12 +28,17 @@ function wrap(context: UniApp.CanvasContext, value: string, maxWidth: number, ma
   return lines;
 }
 
-export function drawPoster(report: EvaluationReport, anonymous: boolean): Promise<string> {
+export function drawPoster(
+  report: EvaluationReport,
+  anonymous: boolean,
+  entry?: PosterEntry,
+): Promise<string> {
   return new Promise((resolve, reject) => {
     const ctx = uni.createCanvasContext(POSTER_CANVAS_ID);
     const diagnostic = publicDiagnosticSummary(report);
+    const height = posterHeight(entry);
     ctx.setFillStyle('#f6f6ec');
-    ctx.fillRect(0, 0, POSTER_WIDTH, POSTER_HEIGHT);
+    ctx.fillRect(0, 0, POSTER_WIDTH, height);
     ctx.setFillStyle('#263d31');
     ctx.fillRect(0, 0, 300, 70);
     ctx.setFontSize(19);
@@ -114,27 +124,47 @@ export function drawPoster(report: EvaluationReport, anonymous: boolean): Promis
     });
     ctx.setFillStyle('#e4e8d8');
     ctx.fillRect(22, 641, 256, 1);
+    if (entry) {
+      ctx.setFillStyle('#ffffff');
+      ctx.fillRect(22, 651, 112, 112);
+      ctx.drawImage(entry.codePath, 26, 655, 104, 104);
+      ctx.setFontSize(12);
+      ctx.setFillStyle('#355b41');
+      wrap(ctx, '扫码看完整评估', 136, 2).forEach((line, index) =>
+        ctx.fillText(line, 146, 681 + index * 17),
+      );
+      ctx.setFontSize(9);
+      ctx.setFillStyle('#839572');
+      wrap(ctx, '也给你的项目做一次融资体检', 128, 3).forEach((line, index) =>
+        ctx.fillText(line, 146, 707 + index * 14),
+      );
+      ctx.setFontSize(8);
+      ctx.fillText(entry.label || '项目方授权公开', 146, 752);
+      ctx.setFillStyle('#e4e8d8');
+      ctx.fillRect(22, 775, 256, 1);
+    }
+    const footer = height - 23;
     ctx.setFontSize(8);
     ctx.setFillStyle('#8e9a7f');
-    ctx.fillText('资料陈述未经独立尽调 · 风险可能被遗漏', 22, 657);
+    ctx.fillText('资料陈述未经独立尽调 · 风险可能被遗漏', 22, footer);
     ctx.fillText(
       report.mode === 'demo'
         ? '虚构演示 · 仅供自检 · 非真实投资意向'
         : 'AI 生成 · 仅供自检 · 非投资建议或承诺',
       22,
-      671,
+      footer + 14,
     );
     if (report.mode === 'demo') {
       ctx.setFontSize(8);
-      ctx.fillText('DEMO', 250, 671);
+      ctx.fillText('DEMO', 250, footer + 14);
     }
     ctx.draw(false, () =>
       uni.canvasToTempFilePath({
         canvasId: POSTER_CANVAS_ID,
         width: POSTER_WIDTH,
-        height: POSTER_HEIGHT,
+        height,
         destWidth: POSTER_WIDTH * 3,
-        destHeight: POSTER_HEIGHT * 3,
+        destHeight: height * 3,
         fileType: 'png',
         success: (result) => resolve(result.tempFilePath),
         fail: () => reject(new Error('海报生成失败，请重试')),

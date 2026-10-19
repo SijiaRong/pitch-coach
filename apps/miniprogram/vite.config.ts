@@ -13,5 +13,5 @@ export default defineConfig({
     },
   },
   optimizeDeps: { exclude: ['@pitchcoach/shared'] },
-  server: { proxy: { '/api': 'http://127.0.0.1:8787' } },
+  server: { proxy: { '/api': process.env.PITCHCOACH_DEV_API_TARGET || 'http://127.0.0.1:8787' } },
 });

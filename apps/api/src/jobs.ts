@@ -4,6 +4,7 @@ import type { InvestorReview, JobStatus, Submission } from '@pitchcoach/shared';
 import type { Config } from './config';
 import type { Reviewer } from './provider';
 import { PublicError } from './errors';
+import { attestReport } from './report-proof';
 
 interface Job {
   owner: string;
@@ -91,6 +92,11 @@ export class EvaluationJobs {
         throw first.reason;
       }
       job.state.report = aggregateReport(submission, reviews, { id: job.state.id, mode: 'live' });
+      job.state.report.publicationProof = attestReport(
+        job.state.report,
+        job.owner,
+        this.config.SESSION_SECRET,
+      );
       job.state.status = 'done';
     } catch (error) {
       job.state.status = 'failed';

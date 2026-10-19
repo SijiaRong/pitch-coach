@@ -27,6 +27,10 @@ export const submissionSchema = z.object({
   description: z.string().trim().min(30, '请至少用 30 个字说明项目').max(3000),
   bpText: z.string().trim().max(50000).default(''),
   tone: z.enum(['sharp', 'balanced']).default('sharp'),
+  referralProjectId: z
+    .string()
+    .regex(/^[A-Za-z0-9_-]{22}$/)
+    .optional(),
   consent: z.literal(true, { error: '请先同意将资料发送给 AI 服务进行本次评估' }),
 });
 export type Submission = z.infer<typeof submissionSchema>;
@@ -88,6 +92,8 @@ export interface EvaluationReport {
   missingInvestors: string[];
   actions: { dimension: string; task: string; priority: number }[];
   disclaimer: string;
+  /** Server attestation permits the owner to publish after the transient job is deleted. */
+  publicationProof?: string;
 }
 
 export interface JobStatus {

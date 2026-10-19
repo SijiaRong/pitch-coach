@@ -106,6 +106,9 @@ function remove(id: string) {
       份。清理微信缓存、浏览器数据或卸载应用后，报告可能丢失。需要长期保留时，可保存海报与改进清单。</view
     >
     <button class="history-privacy" @click="uni.navigateTo({ url: '/pages/privacy/index?section=rights' })">隐私管理与使用说明 ↗</button>
+    <button class="history-commerce" @click="uni.navigateTo({ url: '/pages/commerce/index' })">
+      我的公开项目与购买记录 ↗
+    </button>
     <BottomNav active="history" />
   </view>
 </template>
@@ -116,6 +119,13 @@ function remove(id: string) {
   padding: 11px 0;
   color: #496c40;
   font-size: 11px;
+}
+.history-commerce {
+  width: 100%;
+  min-height: 44px;
+  padding: 12px 0;
+  font-size: 12px;
+  color: #658a4c;
 }
 .history-diagnostics {
   display: block;

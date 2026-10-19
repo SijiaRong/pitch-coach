@@ -44,6 +44,7 @@ const description = ref('');
 const bpText = ref('');
 const tone = ref<Submission['tone']>('sharp');
 const consent = ref(hasAIDataConsent());
+const referralProjectId = ref<string>();
 const expandedBP = ref(false);
 const filename = ref('');
 const uploading = ref(false);
@@ -61,6 +62,8 @@ let operation = 0;
 let activeId = '';
 
 onLoad((options) => {
+  if (options?.referral && /^[A-Za-z0-9_-]{22}$/.test(options.referral))
+    referralProjectId.value = options.referral;
   if (options?.industry && INDUSTRY_IDS.includes(options.industry as IndustryId))
     industry.value = options.industry as IndustryId;
   if (options?.round && ROUND_IDS.includes(options.round as RoundId))
@@ -158,6 +161,7 @@ async function submit() {
     bpText: bpText.value,
     tone: tone.value,
     consent: consent.value,
+    referralProjectId: referralProjectId.value,
   });
   if (!parsed.success) {
     error.value = parsed.error.issues[0].message;

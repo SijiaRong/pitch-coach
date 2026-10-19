@@ -2,6 +2,7 @@ import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { FastifyRequest } from 'fastify';
 import type { Config } from './config';
 import { PublicError } from './errors';
+import type { WechatIdentity } from './wechat-api';
 
 const hmac = (value: string, secret: string) =>
   createHmac('sha256', secret).update(value).digest('base64url');
@@ -41,6 +42,7 @@ export async function createSession(
   code: string | undefined,
   config: Config,
   fetcher: typeof fetch = fetch,
+  onIdentity?: (owner: string, identity: WechatIdentity) => void,
 ) {
   if (!config.WECHAT_APP_ID || !config.WECHAT_APP_SECRET) {
     if (config.NODE_ENV === 'production')
@@ -55,7 +57,7 @@ export async function createSession(
     js_code: code,
     grant_type: 'authorization_code',
   }).toString();
-  let data: { openid?: string; errcode?: number };
+  let data: { openid?: string; session_key?: string; errcode?: number };
   try {
     const response = await fetcher(url, { signal: AbortSignal.timeout(10000) });
     if (!response.ok) throw new Error();
@@ -65,8 +67,10 @@ export async function createSession(
   }
   if (data.errcode || !data.openid)
     throw new PublicError(401, 'LOGIN_FAILED', '微信登录失败，请重新打开小程序后重试');
+  const owner = `wx:${hmac(data.openid, config.OWNER_ID_SECRET || config.SESSION_SECRET)}`;
+  if (data.session_key) onIdentity?.(owner, { openid: data.openid, sessionKey: data.session_key });
   return {
-    token: issueToken(`wx:${hmac(data.openid, config.SESSION_SECRET)}`, config),
+    token: issueToken(owner, config),
     expiresIn: 7200,
     development: false,
   };

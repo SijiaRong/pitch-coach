@@ -14,7 +14,7 @@ export class ApiFailure extends Error {
   }
 }
 
-function request<T>(
+export function request<T>(
   path: string,
   method: 'GET' | 'POST' | 'DELETE' = 'GET',
   data?: unknown,
@@ -37,6 +37,11 @@ function request<T>(
           if (result.statusCode === 401) {
             token = '';
             expiresAt = 0;
+            try {
+              uni.removeStorageSync('pitchcoach:session:v1');
+            } catch {
+              /* Best effort. */
+            }
           }
           reject(
             new ApiFailure(
@@ -73,13 +78,35 @@ async function login() {
   token = session.token;
   expiresAt = Date.now() + (session.expiresIn - 60) * 1000;
 }
-async function ensureSession() {
-  if (token && expiresAt > Date.now()) return;
+export async function ensureSession(force = false) {
+  if (!token) {
+    try {
+      const saved = uni.getStorageSync('pitchcoach:session:v1');
+      if (
+        saved &&
+        typeof saved.token === 'string' &&
+        saved.token.length < 1024 &&
+        typeof saved.expiresAt === 'number' &&
+        saved.expiresAt > Date.now()
+      ) {
+        token = saved.token;
+        expiresAt = saved.expiresAt;
+      }
+    } catch {
+      /* A session can remain memory-only when storage is unavailable. */
+    }
+  }
+  if (!force && token && expiresAt > Date.now()) return;
   if (!signingIn)
     signingIn = login().finally(() => {
       signingIn = undefined;
     });
   await signingIn;
+  try {
+    uni.setStorageSync('pitchcoach:session:v1', { token, expiresAt });
+  } catch {
+    /* Best effort. */
+  }
 }
 
 export async function evaluate(submission: Submission) {

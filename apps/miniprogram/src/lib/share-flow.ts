@@ -14,7 +14,10 @@ export interface ImageShareBridge {
 export async function openPosterShare(
   path: string,
   bridge: ImageShareBridge,
+  entrancePath = '/pages/index/index',
 ): Promise<ImageShareResult> {
+  if (!/^\/pages\/(?:index\/index|project\/index\?share=[A-Za-z0-9_-]{22})$/.test(entrancePath))
+    entrancePath = '/pages/index/index';
   if (!path) throw new Error('请先生成海报');
   if (bridge.showMenu) {
     const result = await new Promise<ImageShareResult | 'unsupported'>((resolve) => {
@@ -22,7 +25,7 @@ export async function openPosterShare(
         bridge.showMenu!({
           path,
           needShowEntrance: true,
-          entrancePath: '/pages/index/index',
+          entrancePath,
           success: () => resolve('opened'),
           fail: (error) =>
             resolve(/cancel/i.test(error.errMsg || '') ? 'cancelled' : 'unsupported'),

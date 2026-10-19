@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue';
-import { onLoad, onShareAppMessage, onShareTimeline } from '@dcloudio/uni-app';
+import { onLoad, onShow, onShareAppMessage, onShareTimeline } from '@dcloudio/uni-app';
 import {
   INVESTORS,
   VOTE_LABELS,
@@ -9,14 +9,19 @@ import {
   getPreference,
   getRound,
   publicDiagnosticSummary,
+  DEFAULT_PREFERENCES,
 } from '@pitchcoach/shared';
 import type { EvaluationReport } from '@pitchcoach/shared';
 import PageHeader from '@/components/PageHeader.vue';
 import InvestorAvatar from '@/components/InvestorAvatar.vue';
 import RiskDiagnosis from '@/components/RiskDiagnosis.vue';
 import { findReport } from '@/lib/storage';
-import { drawPoster, savePoster, POSTER_CANVAS_ID } from '@/lib/poster';
+import { drawPoster, savePoster, POSTER_CANVAS_ID, posterHeight } from '@/lib/poster';
+import type { PosterEntry } from '@/lib/poster';
 import { sharePoster } from '@/lib/share';
+import { findPublication, projectPath } from '@/lib/publication';
+import type { PublicationLink } from '@/lib/publication';
+import { demoCodePath, getProject, projectCodePath } from '@/lib/commerce-api';
 
 const report = ref<EvaluationReport>();
 const tab = ref('risks');
@@ -25,6 +30,10 @@ const expandedInvestor = ref('');
 const posterOpen = ref(false);
 const posterPath = ref('');
 const anonymous = ref(true);
+const publication = ref<PublicationLink>(),
+  entry = ref<PosterEntry>();
+const canvasStyle = computed(() => ({ height: `${posterHeight(entry.value)}px` }));
+const previewStyle = computed(() => ({ height: `${posterHeight(entry.value) * 0.75}px` }));
 const posterBusy = ref(false);
 const posterError = ref('');
 const shareHint = ref('在微信图片分享菜单中选择“朋友圈”，发布前仍可确认。');
@@ -36,28 +45,73 @@ const industry = computed(() => (report.value ? getIndustry(report.value.industr
 const roundName = computed(() => getRound(report.value?.round || 'angel').name);
 
 onLoad((options) => {
+  if (options?.share) {
+    uni.redirectTo({ url: `/pages/project/index?share=${encodeURIComponent(options.share)}` });
+    return;
+  }
   if (options?.from === 'timeline' && !options.id) {
     uni.reLaunch({ url: '/pages/index/index' });
     return;
   }
   if (options?.id) report.value = findReport(options.id);
+  if (report.value) publication.value = findPublication(report.value.id);
+  if (options?.publication && report.value && /^[A-Za-z0-9_-]{22}$/.test(options.publication))
+    publication.value = {
+      reportId: report.value.id,
+      projectId: options.publication,
+      anonymous: true,
+    };
+  if (options?.poster === '1') void nextTick().then(() => makePoster(false));
+});
+onShow(() => {
+  if (report.value) publication.value = findPublication(report.value.id) || publication.value;
 });
 onShareAppMessage(() => ({
   title: '你的项目，敢让 AI 投委会看一眼吗？',
-  path: '/pages/index/index',
+  path: publication.value ? projectPath(publication.value) : '/pages/index/index',
 }));
-onShareTimeline(() => ({ title: '先被 AI 问倒，再去见投资人。', query: 'from=timeline' }));
+onShareTimeline(() => ({
+  title: '先被 AI 问倒，再去见投资人。',
+  query:
+    publication.value && !publication.value.example
+      ? `share=${publication.value.projectId}`
+      : 'from=timeline',
+}));
 
-async function makePoster() {
+async function makePoster(setup = true) {
   if (!report.value) return;
+  if (setup && !publication.value) {
+    uni.navigateTo({ url: `/pages/publish/index?id=${encodeURIComponent(report.value.id)}` });
+    return;
+  }
   posterOpen.value = true;
   posterBusy.value = true;
   posterError.value = '';
   shareHint.value = '在微信图片分享菜单中选择“朋友圈”，发布前仍可确认。';
   posterPath.value = '';
-  await nextTick();
   try {
-    posterPath.value = await drawPoster(report.value, anonymous.value);
+    entry.value = undefined;
+    if (publication.value && !publication.value.example) {
+      await getProject(publication.value.projectId);
+      entry.value = { codePath: await projectCodePath(publication.value.projectId) };
+    } else if (publication.value?.example) {
+      try {
+        entry.value = {
+          codePath: await demoCodePath({
+            industry: publication.value.example,
+            round: publication.value.round || 'angel',
+            priceFen: publication.value.priceFen || 8888,
+            anonymous: publication.value.anonymous,
+            preferences: publication.value.preferences || DEFAULT_PREFERENCES,
+          }),
+          label: '虚构演示 · 扫码体验',
+        };
+      } catch {
+        shareHint.value = '示例扫码入口尚未配置，当前海报不含二维码。配置后可生成真实入口。';
+      }
+    }
+    await nextTick();
+    posterPath.value = await drawPoster(report.value, anonymous.value, entry.value);
   } catch (cause) {
     posterError.value = cause instanceof Error ? cause.message : '海报生成失败';
   } finally {
@@ -66,7 +120,7 @@ async function makePoster() {
 }
 async function toggleAnonymous() {
   anonymous.value = !anonymous.value;
-  await makePoster();
+  await makePoster(false);
 }
 async function save() {
   if (!posterPath.value) return;
@@ -82,7 +136,10 @@ async function share() {
   shareBusy.value = true;
   posterError.value = '';
   try {
-    const result = await sharePoster(posterPath.value);
+    const result = await sharePoster(
+      posterPath.value,
+      publication.value && !publication.value.example ? projectPath(publication.value) : undefined,
+    );
     if (result === 'preview')
       shareHint.value =
         '当前环境无法打开微信分享菜单，已打开大图预览。请在手机微信中分享；也可使用下方保存图片。';
@@ -163,8 +220,18 @@ const retry = () =>
           >旧报告尚未完成专项风险检查，建议重新评估。</text
         >
       </view>
-      <button class="secondary conclusion-share" @click="makePoster">
-        把这份诊断分享到朋友圈 ↗
+      <button class="secondary conclusion-share" @click="makePoster()">
+        {{ publication ? '生成带扫码入口的朋友圈海报' : '公开完整评估，添加扫码入口' }} ↗
+      </button>
+      <button v-if="!publication" class="summary-only" @click="makePoster(false)">
+        仅分享匿名摘要，不公开完整报告
+      </button>
+      <button
+        v-if="publication"
+        class="summary-only"
+        @click="uni.navigateTo({ url: projectPath(publication!) })"
+      >
+        预览扫码者看到的公开页 ↗
       </button>
       <view v-if="report.missingInvestors.length" class="notice partial-notice"
         >部分投资人未完成审阅：{{
@@ -281,7 +348,7 @@ const retry = () =>
       >
 
       <view class="report-disclaimer">{{ report.disclaimer }}</view>
-      <button class="primary lime poster-cta" @click="makePoster">
+      <button class="primary lime poster-cta" @click="makePoster()">
         <text>把这份诊断分享到朋友圈</text><text>↗</text></button
       ><text class="share-note">先预览，再分享。默认隐藏项目名称。</text
       ><button class="back-home" @click="uni.reLaunch({ url: '/pages/index/index' })">
@@ -295,12 +362,21 @@ const retry = () =>
             ><button :disabled="posterBusy" aria-label="关闭海报" @click="posterOpen = false">
               ×
             </button></view
-          ><text class="poster-caption">红橙旗、死亡预言、未验假设，一起带上。确认后分享。</text
-          ><view class="poster-preview"
+          ><text class="poster-caption">{{
+            entry
+              ? publication?.example
+                ? '虚构示例扫码入口；本地地址仅供本机预览，未接通真实收款。'
+                : '扫码可看你授权公开的完整评估；资料包和联系方式另行解锁。'
+              : publication?.example
+                ? '虚构演示海报；未配置官方小程序码，当前画面不含扫码入口。'
+                : '红橙旗、死亡预言、未验假设，一起带上。确认后分享。'
+          }}</text
+          ><view class="poster-preview" :style="previewStyle"
             ><canvas
               :id="POSTER_CANVAS_ID"
               :canvas-id="POSTER_CANVAS_ID"
               class="share-canvas"
+              :style="canvasStyle"
               :disable-scroll="true"
             /><image
               v-if="posterPath"
@@ -323,9 +399,11 @@ const retry = () =>
           <button class="save-secondary" :disabled="posterBusy || !posterPath" @click="save">
             保存图片到本地
           </button>
-          <text class="poster-caption bottom"
-            >海报仅含风险类别与条件性情景；BP 原文、客户与金额不进入画面。</text
-          >
+          <text class="poster-caption bottom">{{
+            entry
+              ? '海报匿名不改变公开页的披露范围；请先检查公开内容。'
+              : '海报仅含风险类别与条件性情景；BP 原文、客户与金额不进入画面。'
+          }}</text>
         </view></view
       >
     </template>
@@ -869,6 +947,12 @@ const retry = () =>
 }
 .conclusion-share {
   font-size: 11px;
+}
+.summary-only {
+  width: 100%;
+  font-size: 10px;
+  color: #799565;
+  padding: 12px 0 3px;
 }
 .save-secondary {
   width: 100%;

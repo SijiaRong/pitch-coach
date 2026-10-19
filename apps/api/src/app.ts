@@ -12,10 +12,12 @@ import { extractDocument, MAX_FILE_BYTES } from './extract';
 import { EvaluationJobs } from './jobs';
 import { createReviewer } from './provider';
 import type { Reviewer } from './provider';
+import { IdentityVault } from './wechat-api';
+import { registerCommerce } from './commerce-routes';
 
 export async function createApp(
   config: Config,
-  options: { reviewer?: Reviewer; logger?: boolean } = {},
+  options: { reviewer?: Reviewer; logger?: boolean; wechatFetch?: typeof fetch } = {},
 ) {
   const app = Fastify({
     logger: options.logger ?? false,
@@ -33,10 +35,13 @@ export async function createApp(
     max: 180,
     timeWindow: '1 minute',
     errorResponseBuilder: () => ({
+      statusCode: 429,
       error: { code: 'RATE_LIMIT', message: '请求太频繁，请稍后重试' },
     }),
   });
   const jobs = new EvaluationJobs(config, options.reviewer ?? createReviewer(config));
+  const identities = new IdentityVault();
+  const commerce = registerCommerce(app, config, identities, options.wechatFetch);
   const timer = setInterval(() => jobs.sweep(), 60000);
   timer.unref();
   app.addHook('onClose', async () => {
@@ -48,6 +53,10 @@ export async function createApp(
   });
 
   app.setErrorHandler((error, _request, reply) => {
+    if ((error as { statusCode?: number }).statusCode === 429)
+      return reply
+        .code(429)
+        .send({ error: { code: 'RATE_LIMIT', message: '请求太频繁，请稍后重试' } });
     if (error instanceof z.ZodError)
       return reply.code(400).send({
         error: {
@@ -86,7 +95,9 @@ export async function createApp(
     { config: { rateLimit: { max: 20, timeWindow: '10 minutes' } } },
     async (request) => {
       const body = z.object({ code: z.string().max(256).optional() }).parse(request.body);
-      return createSession(body.code, config);
+      return createSession(body.code, config, options.wechatFetch, (owner, identity) =>
+        identities.put(owner, identity),
+      );
     },
   );
   app.post(
@@ -126,7 +137,9 @@ export async function createApp(
           'AI_NOT_CONFIGURED',
           '本场部分 AI 教练尚未配置，可以调整偏好或先体验示例报告',
         );
-      return reply.code(202).send(jobs.create(owner, submission));
+      const job = jobs.create(owner, submission);
+      commerce.recordReferral(submission.referralProjectId);
+      return reply.code(202).send(job);
     },
   );
   app.get('/api/evaluations/:id', async (request) => {
