@@ -105,11 +105,18 @@ function remove(id: string) {
       >报告仅保存在这台设备，最多保留最近 20
       份。清理微信缓存、浏览器数据或卸载应用后，报告可能丢失。需要长期保留时，可保存海报与改进清单。</view
     >
+    <button class="history-privacy" @click="uni.navigateTo({ url: '/pages/privacy/index?section=rights' })">隐私管理与使用说明 ↗</button>
     <BottomNav active="history" />
   </view>
 </template>
 
 <style scoped>
+.history-privacy {
+  min-height: 44px;
+  padding: 11px 0;
+  color: #496c40;
+  font-size: 11px;
+}
 .history-diagnostics {
   display: block;
   color: #8a775f;

@@ -29,6 +29,8 @@ describe('公开海报绘制', () => {
     const text = drawn.map((item) => item.text).join('');
     for (const label of ['阻断性红旗', '橙旗', '关键假设', '死亡预言', '红旗阻断'])
       expect(text).toContain(label);
+    expect(text).toContain('虚构演示');
+    expect(text).not.toContain('AI 生成');
     for (const secret of [
       '私密项目甲',
       '客户乙',
@@ -45,5 +47,10 @@ describe('公开海报绘制', () => {
         destHeight: POSTER_HEIGHT * 3,
       }),
     );
+    drawn.length = 0;
+    report.mode = 'live';
+    await drawPoster(report, true);
+    expect(drawn.map((item) => item.text).join('')).toContain('AI 生成');
+    expect(drawn.every((item) => item.y > 0 && item.y < POSTER_HEIGHT)).toBe(true);
   });
 });

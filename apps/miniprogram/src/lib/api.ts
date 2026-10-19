@@ -1,4 +1,5 @@
 import type { ApiError, JobStatus, Submission } from '@pitchcoach/shared';
+import { hasAIDataConsent, isPrivacyRefusal } from './privacy';
 
 const BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
 let token = '';
@@ -82,7 +83,14 @@ async function ensureSession() {
 }
 
 export async function evaluate(submission: Submission) {
+  const checkConsent = () => {
+    if (!submission.consent || !hasAIDataConsent())
+      throw new ApiFailure('CONSENT_REQUIRED', '请先同意将项目资料交给 DeepSeek 进行评估');
+  };
+  checkConsent();
   await ensureSession();
+  // A user may withdraw consent while the login request is still in flight.
+  checkConsent();
   return request<JobStatus>('/api/evaluations', 'POST', submission);
 }
 export const pollEvaluation = (id: string) => request<JobStatus>(`/api/evaluations/${id}`);
@@ -138,10 +146,12 @@ export async function chooseDocument(): Promise<
         const file = result.tempFiles[0];
         resolve({ path: file.path, name: file.name, size: file.size });
       },
-      fail: (error) =>
-        error.errMsg?.includes('cancel')
-          ? resolve(undefined)
-          : reject(new ApiFailure('FILE_ERROR', '无法选择文件，请稍后重试')),
+      fail: (error) => {
+        if (isPrivacyRefusal(error))
+          reject(new ApiFailure('PRIVACY_DECLINED', '未同意微信隐私指引，未选择或上传文件。仍可粘贴文字或体验示例。'));
+        else if (error.errMsg?.includes('cancel')) resolve(undefined);
+        else reject(new ApiFailure('FILE_ERROR', '无法选择文件，请稍后重试'));
+      },
     }),
   );
   // #endif

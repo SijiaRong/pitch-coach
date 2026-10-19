@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { FUNDING_ROUNDS, INDUSTRIES, INVESTOR_ROSTER, PREFERENCES } from '@pitchcoach/shared';
 import PageHeader from '@/components/PageHeader.vue';
+import { OPERATOR_NAME, openWechatPrivacyContract } from '@/lib/privacy';
 function copyRepo() {
   uni.setClipboardData({ data: 'https://github.com/SijiaRong/pitch-coach' });
 }
@@ -14,6 +15,17 @@ function copyRepo() {
       >PitchCoach
       是一个开源的创业项目自检工具。它不能替你做出投资决定，但可以帮你在真正路演前，把那些难回答的问题先问一遍。</text
     >
+    <view class="privacy-entry">
+      <view class="privacy-entry-title">资料处理与隐私</view>
+      <text>DeepSeek 评估 · 报告保存在本机 · 同意可撤回</text>
+      <view class="privacy-entry-actions">
+        <button @click="uni.navigateTo({ url: '/pages/privacy/index' })">隐私保护指引 ↗</button>
+        <button @click="uni.navigateTo({ url: '/pages/privacy/index?section=terms' })">使用须知 ↗</button>
+      </view>
+      <!-- #ifdef MP-WEIXIN -->
+      <button class="wechat-privacy" @click="openWechatPrivacyContract">微信平台隐私保护指引 ↗</button>
+      <!-- #endif -->
+    </view>
     <view class="about-section"
       ><view class="about-section-title">它怎么打分</view
       ><text
@@ -45,13 +57,12 @@ function copyRepo() {
     <view class="about-section"
       ><view class="about-section-title">资料会去哪里</view
       ><text
-        >上传前需要你主动同意资料处理。BP 文件发送到你使用的后台服务，提取为文字后参与本次 AI
-        评估。扫描件和纯图片暂不支持 OCR。</text
+        >你选择并上传的 BP 文件仅发送至我们的后台提取文字；开始评估前，需要你单独同意将项目文字交给 DeepSeek。文件选择与相册保存使用微信按需授权，拒绝后仍可浏览示例。</text
       ><text
         >原始文件与正文不写入应用数据库，不用于公开展示。评估过程中资料会存在后台内存中；任务完成后的报告缓存最多保留
         10 分钟，客户端领取后会请求删除。错误日志不记录 BP、密钥或模型完整响应。</text
       ><text
-        >评估需要把项目文字发送给部署者配置的模型服务。模型服务商的保存与使用规则由其服务条款决定；提交前请向部署者确认实际服务商与资料使用政策。</text
+        >当前 AI 服务接收方为 DeepSeek。其处理规则与保存期限须结合服务条款及实际合作约定；请先脱敏，不要提交商业秘密或无权使用的资料。</text
       ><text
         >完整报告保存在当前设备，最多 20
         份，不跨设备同步。报告可能包含你的商业信息和原文摘录，请妥善保管。清理本机记录不会删除模型服务商可能保存的数据。</text
@@ -79,13 +90,24 @@ function copyRepo() {
     >
     <view class="open-source-card"
       ><text class="eyebrow">OPEN SOURCE, OPEN QUESTIONS.</text><view>好的问题，值得一起打磨。</view
-      ><text>个人开源项目 · MIT License · v0.1.0</text
+      ><text>{{ OPERATOR_NAME ? `${OPERATOR_NAME} · ` : '' }}开源软件 · MIT License · v0.1.0</text
       ><button class="secondary" @click="copyRepo">复制 GitHub 仓库地址 ↗</button></view
     >
   </view>
 </template>
 
 <style scoped>
+.privacy-entry {
+  margin-top: 22px;
+  padding: 15px;
+  border-radius: 12px;
+  background: #eaf0de;
+}
+.privacy-entry-title { font-size: 14px; font-weight: 700; }
+.privacy-entry > text { display: block; font-size: 11px; color: #5c714f; margin-top: 6px; line-height: 1.8; }
+.privacy-entry-actions { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 6px; }
+.privacy-entry-actions button, .wechat-privacy { min-height: 44px; padding: 10px 0; font-size: 12px; text-align: left; color: #2f684e; }
+.wechat-privacy { font-size: 11px; }
 .about-page > .eyebrow {
   font-size: 8px;
 }

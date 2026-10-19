@@ -141,7 +141,7 @@ onShareTimeline(() => ({ title: '先被 AI 问倒，再去见投资人。' }));
       ></view
     >
     <button class="about-link" @click="uni.navigateTo({ url: '/pages/about/index' })">
-      开源项目 · 评分规则 · 隐私说明 ↗
+      关于 · 评分规则 · 隐私与使用说明 ↗
     </button>
     <BottomNav active="home" />
   </view>

@@ -1,5 +1,6 @@
 import { getIndustry, getRound, publicDiagnosticSummary } from '@pitchcoach/shared';
 import type { EvaluationReport } from '@pitchcoach/shared';
+import { isPrivacyRefusal } from './privacy';
 
 export const POSTER_WIDTH = 300;
 export const POSTER_HEIGHT = 680;
@@ -116,7 +117,13 @@ export function drawPoster(report: EvaluationReport, anonymous: boolean): Promis
     ctx.setFontSize(8);
     ctx.setFillStyle('#8e9a7f');
     ctx.fillText('资料陈述未经独立尽调 · 风险可能被遗漏', 22, 657);
-    ctx.fillText('AI 模拟评估，仅供自检 · 非真实投资意向', 22, 671);
+    ctx.fillText(
+      report.mode === 'demo'
+        ? '虚构演示 · 仅供自检 · 非真实投资意向'
+        : 'AI 生成 · 仅供自检 · 非投资建议或承诺',
+      22,
+      671,
+    );
     if (report.mode === 'demo') {
       ctx.setFontSize(8);
       ctx.fillText('DEMO', 250, 671);
@@ -151,7 +158,11 @@ export async function savePoster(path: string) {
     uni.saveImageToPhotosAlbum({
       filePath: path,
       success: () => resolve(),
-      fail: () => reject(new Error('保存失败，请在微信设置中允许保存图片；也可以长按预览图保存。')),
+      fail: (error) => reject(new Error(
+        isPrivacyRefusal(error)
+          ? '未同意微信隐私指引，图片未保存。你仍可预览或分享海报。'
+          : '保存失败，请在微信设置中允许保存图片；也可以长按预览图保存。',
+      )),
     }),
   );
   // #endif

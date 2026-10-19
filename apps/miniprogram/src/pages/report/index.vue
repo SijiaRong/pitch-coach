@@ -100,7 +100,7 @@ function copyActions() {
     .map((action) => `${action.priority}. ${action.dimension}：${action.task}`)
     .join('\n');
   uni.setClipboardData({
-    data: `${report.value.projectName} · 融资改进清单\n${content}\n\n${report.value.disclaimer}`,
+    data: `${report.value.projectName} · 融资改进清单\n${content}\n\n${report.value.mode === 'demo' ? '虚构演示，非真实项目评估。' : 'AI 生成内容，请核验。'}\n${report.value.disclaimer}`,
   });
 }
 const retry = () =>
@@ -116,7 +116,7 @@ const retry = () =>
       <view class="report-topline"
         ><text class="eyebrow">THE INVESTMENT MEMO</text
         ><view class="pill" :class="{ demo: report.mode === 'demo' }">{{
-          report.mode === 'demo' ? 'DEMO · 演示报告' : 'AI 模拟评估'
+          report.mode === 'demo' ? 'DEMO · 演示报告' : 'AI 生成 · 模拟评估'
         }}</view></view
       >
       <view v-if="report.mode === 'demo'" class="demo-notice"

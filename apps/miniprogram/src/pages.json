@@ -15,7 +15,8 @@
     },
     { "path": "pages/history/index", "style": { "navigationBarTitleText": "我的报告" } },
     { "path": "pages/investors/index", "style": { "navigationBarTitleText": "AI 投委会" } },
-    { "path": "pages/about/index", "style": { "navigationBarTitleText": "关于与隐私" } }
+    { "path": "pages/about/index", "style": { "navigationBarTitleText": "关于与隐私" } },
+    { "path": "pages/privacy/index", "style": { "navigationBarTitleText": "隐私与使用说明" } }
   ],
   "globalStyle": {
     "navigationStyle": "custom",

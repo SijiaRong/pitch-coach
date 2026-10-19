@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { onLoad, onUnload } from '@dcloudio/uni-app';
+import { onLoad, onShow, onUnload } from '@dcloudio/uni-app';
 import {
   EXAMPLES,
   DEFAULT_PREFERENCES,
@@ -31,6 +31,7 @@ import {
   uploadDocument,
 } from '@/lib/api';
 import { openReport } from '@/lib/storage';
+import { hasAIDataConsent, setAIDataConsent } from '@/lib/privacy';
 
 const projectName = ref('');
 const industry = ref<IndustryId>('ai');
@@ -42,7 +43,7 @@ const stage = ref<Submission['stage']>('已有原型');
 const description = ref('');
 const bpText = ref('');
 const tone = ref<Submission['tone']>('sharp');
-const consent = ref(false);
+const consent = ref(hasAIDataConsent());
 const expandedBP = ref(false);
 const filename = ref('');
 const uploading = ref(false);
@@ -81,6 +82,14 @@ onLoad((options) => {
 onUnload(() => {
   void cancel();
 });
+onShow(() => {
+  consent.value = hasAIDataConsent();
+});
+
+function toggleConsent() {
+  consent.value = !consent.value;
+  setAIDataConsent(consent.value);
+}
 
 function setStage(event: { detail: { value: string | number } }) {
   stage.value = STAGES[Number(event.detail.value)];
@@ -110,10 +119,6 @@ function fillExample() {
 }
 async function upload() {
   error.value = '';
-  if (!consent.value) {
-    error.value = '上传前，请先勾选下方的资料处理说明。';
-    return;
-  }
   try {
     const file = await chooseDocument();
     if (!file) return;
@@ -295,10 +300,13 @@ async function submit() {
         <view class="upload-icon">{{ uploading ? '◌' : '↥' }}</view
         ><view
           ><text class="upload-title">{{
-            uploading ? '正在提取文字…' : filename || '上传一份 BP'
+            uploading ? '正在提取文字…' : filename || '选择并上传 BP'
           }}</text
           ><text class="upload-description">PDF / PPTX / DOCX / TXT / MD · 最大 10 MB</text></view
         ><text class="upload-plus">+</text></button
+      ><view class="upload-privacy-note"
+        >文件仅上传至我们的服务器提取文字，开始评估时才交给 DeepSeek。建议先脱敏。
+        <button @click="uni.navigateTo({ url: '/pages/privacy/index?section=data' })">资料处理说明 ↗</button></view
       ><button class="paste-toggle" @click="expandedBP = !expandedBP">
         <text>{{ expandedBP ? '收起正文' : '或者，直接粘贴项目正文' }}</text
         ><text>{{ expandedBP ? '−' : '+' }}</text></button
@@ -376,15 +384,15 @@ async function submit() {
       </button>
     </view>
 
-    <button class="consent-row" :aria-checked="consent" @click="consent = !consent">
+    <button class="consent-row" role="checkbox" :aria-checked="consent" @click="toggleConsent">
       <view class="checkbox" :class="{ checked: consent }">{{ consent ? '✓' : '' }}</view
       ><text
-        >我同意将本次资料发送给配置的 AI
-        服务进行评估。报告保存在本机，不会自动公开。请勿提交无权使用的资料。</text
+        >我同意将项目资料发送给 DeepSeek，用于生成评估。报告保存在本机，不会自动公开。</text
       ></button
-    ><button class="privacy-link" @click="uni.navigateTo({ url: '/pages/about/index' })">
-      查看资料处理与隐私说明 ↗
-    </button>
+    ><view class="consent-links">
+      <button class="privacy-link" @click="uni.navigateTo({ url: '/pages/privacy/index?section=ai' })">资料处理与隐私 ↗</button>
+      <button class="privacy-link" @click="uni.navigateTo({ url: '/pages/privacy/index?section=terms' })">使用须知 ↗</button>
+    </view>
     <view v-if="error" class="error-box" role="alert">{{ error }}</view>
     <button class="primary lime" :disabled="busy || uploading || !panelReady" @click="submit">
       <text>请投委会开场</text><text>↗</text></button
@@ -709,9 +717,9 @@ async function submit() {
   align-items: flex-start;
   gap: 8px;
   text-align: left;
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.9;
-  color: #8c957e;
+  color: #627253;
   margin-bottom: 7px;
 }
 .checkbox {
@@ -731,11 +739,29 @@ async function submit() {
   color: white;
   border-color: #65834c;
 }
-.privacy-link {
-  color: #789364;
-  font-size: 9px;
+.consent-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
   margin: 0 0 18px 23px;
+}
+.privacy-link {
+  color: #496c40;
+  font-size: 11px;
+  min-height: 32px;
+  padding: 6px 0;
   text-align: left;
+}
+.upload-privacy-note {
+  font-size: 11px;
+  line-height: 1.9;
+  color: #69795c;
+  margin-top: 9px;
+}
+.upload-privacy-note button {
+  display: inline;
+  color: #496c40;
+  font-size: 11px;
 }
 .service-status {
   display: flex;
