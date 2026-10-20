@@ -53,10 +53,34 @@ const go = (url: string) => uni.reLaunch({ url });
   gap: 0;
   position: relative;
 }
+.nav-item {
+  transition:
+    color 0.2s ease,
+    background-color 0.25s ease,
+    transform 0.15s ease;
+}
+.nav-item:active {
+  transform: scale(0.94);
+}
 .nav-item.active {
   color: #2f684e;
   font-weight: 700;
   background: #eaf0e3;
+}
+.nav-item.active .nav-icon {
+  animation: nav-pop 0.4s cubic-bezier(0.3, 1.6, 0.5, 1) both;
+}
+@keyframes nav-pop {
+  from {
+    transform: scale(0.6);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav-item,
+  .nav-item.active .nav-icon {
+    transition: none;
+    animation: none;
+  }
 }
 .nav-icon {
   font-size: 22px;

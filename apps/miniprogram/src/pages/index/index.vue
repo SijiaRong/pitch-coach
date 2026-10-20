@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { onUnmounted, ref } from 'vue';
 import { onLoad, onShow, onShareAppMessage, onShareTimeline } from '@dcloudio/uni-app';
-import { FUNDING_ROUNDS, INDUSTRIES, createDemoReport, getPanel } from '@pitchcoach/shared';
+import { INVESTORS, createDemoReport, getPanel } from '@pitchcoach/shared';
 import type { IndustryId, RoundId } from '@pitchcoach/shared';
 import PageHeader from '@/components/PageHeader.vue';
 import BottomNav from '@/components/BottomNav.vue';
@@ -23,9 +23,17 @@ onShow(() => {
 const source = ref('');
 const entryIndustry = ref<IndustryId>('ai');
 const entryRound = ref<RoundId>('angel');
-const choicesOpen = ref(false);
 const previewPanel = getPanel('ai', 'angel');
 const sample = createDemoReport();
+// A gentle ticker of real sample follow-up questions: shows what the product does without a wall of text.
+const tickerItems = sample.investors.flatMap((review) =>
+  review.questions.slice(0, 2).map((question) => ({ question, who: INVESTORS[review.investorId] })),
+);
+const tick = ref(0);
+const tickTimer = setInterval(() => {
+  tick.value = (tick.value + 1) % tickerItems.length;
+}, 3400);
+onUnmounted(() => clearInterval(tickTimer));
 const start = (industry?: IndustryId, round?: RoundId) =>
   openReviewEntry({ industry: industry || entryIndustry.value, round: round || entryRound.value });
 const demo = () => openReport(createDemoReport(entryIndustry.value, 'sharp', entryRound.value));
@@ -64,61 +72,36 @@ onShareTimeline(() =>
         ><button class="primary lime hero-primary" @click="start()">评审我的项目 ↗</button
         ><button class="secondary hero-secondary" @click="demo">免费查看示例 →</button></template
       >
-      <text class="start-hint">先用已有额度，再按需购买。</text>
       <button v-if="state === 'error'" class="quiet-link" @click="load()">
         重新确认服务与价格 ↻
       </button>
     </view>
-    <view class="verdict-preview">
-      <view class="preview-top"
-        ><text>报告不只给分，<br />也告诉你下一步做什么。</text
-        ><text class="preview-tag">固定虚构示例</text></view
-      >
-      <text class="preview-label">模拟追问</text
-      ><text class="preview-question">{{ sample.investors[0].questions[0] }}</text>
-      <text class="preview-label">下一步行动</text
-      ><text class="preview-action">{{ sample.actions[0].task }}</text>
-      <button class="preview-link" @click="demo">免费查看完整示例报告 ↗</button>
+    <view class="ticker" aria-live="polite">
+      <view class="ticker-head"><text>投资人会这样问你</text><text class="ticker-tag">虚构示例</text></view>
+      <view :key="tick" class="ticker-body">
+        <InvestorAvatar :investor="tickerItems[tick].who" small />
+        <text class="ticker-question">“{{ tickerItems[tick].question }}”</text>
+      </view>
+      <view class="ticker-dots"><view v-for="(_, index) in tickerItems" :key="index" class="ticker-dot" :class="{ on: index === tick }" /></view>
     </view>
-    <button class="choices-toggle" :aria-expanded="choicesOpen" @click="choicesOpen = !choicesOpen">
-      <view
-        ><text class="section-title">按行业与轮次开始</text
-        ><text class="caption">想先选好视角，也可以从这里开始</text></view
-      ><text>{{ choicesOpen ? '−' : '+' }}</text>
-    </button>
-    <view v-if="choicesOpen" class="entry-choices"
-      ><text class="caption">按行业开始，下一步可调整设置</text
-      ><view class="industry-grid"
-        ><button v-for="item in INDUSTRIES" :key="item.id" @click="start(item.id)">
-          <text>{{ item.icon }} {{ item.name }}</text
-          ><text>{{ item.subtitle }}</text>
-        </button></view
-      ><text class="caption">按目标轮次开始</text
-      ><view class="round-grid"
-        ><button v-for="item in FUNDING_ROUNDS" :key="item.id" @click="start(undefined, item.id)">
-          {{ item.name }} ↗
-        </button></view
-      ></view
-    >
-    <view class="committee-preview"
-      ><view class="committee-people"
-        ><InvestorAvatar
-          v-for="person in previewPanel"
-          :key="person.id"
-          :investor="person"
-          small /></view
-      ><view class="section-title">同一个项目，<br />换三种视角检查。</view
-      ><text class="caption">教练均为虚构 AI 角色，反馈仅供路演练习参考。</text
-      ><button class="quiet-link" @click="uni.navigateTo({ url: '/pages/investors/index' })">
-        认识 AI 教练与评审偏好 ↗
-      </button></view
-    >
+    <view class="how-it-works">
+      <view v-for="(item, index) in [
+        { icon: '✎', title: '说说项目', sub: '名称加几句话' },
+        { icon: '◈', title: '点选视角', sub: '行业 · 轮次 · 阶段' },
+        { icon: '✳', title: '拿到报告', sub: '30–90 秒' },
+      ]" :key="item.title" class="how-step" :style="{ animationDelay: `${0.25 + index * 0.1}s` }">
+        <text class="how-icon">{{ item.icon }}</text><text class="how-title">{{ item.title }}</text><text class="how-sub">{{ item.sub }}</text>
+      </view>
+    </view>
+    <view class="committee-row">
+      <view class="committee-people"><view v-for="person in previewPanel" :key="person.id" class="committee-person"><InvestorAvatar :investor="person" small /></view></view>
+      <view class="committee-copy"><text class="committee-title">三位 AI 教练，三种视角</text><text class="committee-sub">均为虚构角色，仅供路演练习</text></view>
+      <button class="committee-link" @click="uni.navigateTo({ url: '/pages/investors/index' })">认识 →</button>
+    </view>
     <view class="home-trust"
-      ><button @click="uni.navigateTo({ url: aboutPath('privacy') })">资料会给谁处理？ →</button
-      ><button @click="uni.navigateTo({ url: aboutPath('storage') })">报告存在哪里？ →</button
-      ><button @click="uni.navigateTo({ url: '/pages/privacy/index' })">
-        隐私与使用说明 →
-      </button></view
+      ><button @click="uni.navigateTo({ url: aboutPath('privacy') })">资料给谁处理</button
+      ><text>·</text><button @click="uni.navigateTo({ url: aboutPath('storage') })">报告存在哪</button
+      ><text>·</text><button @click="uni.navigateTo({ url: '/pages/privacy/index' })">隐私说明</button></view
     >
     <BottomNav active="home" />
   </view>
@@ -193,14 +176,6 @@ onShareTimeline(() =>
 .hero-secondary {
   margin-top: 10px;
 }
-.start-hint {
-  display: block;
-  text-align: center;
-  color: #626d64;
-  font-size: 12px;
-  margin-top: 10px;
-  line-height: 1.75;
-}
 .home-page .quiet-link {
   display: flex;
   align-items: center;
@@ -215,47 +190,6 @@ onShareTimeline(() =>
   margin: 0 0 16px;
   font-size: 12px;
 }
-.verdict-preview {
-  background: #233c31;
-  color: white;
-  border-radius: 16px;
-  padding: 20px;
-}
-.preview-top {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  align-items: start;
-  font-size: 18px;
-  font-weight: 700;
-  line-height: 1.5;
-}
-.preview-tag {
-  flex-shrink: 0;
-  font-size: 12px;
-  font-weight: 400;
-  color: #d9f18a;
-  border: 1px solid #728a66;
-  padding: 3px 7px;
-  border-radius: 20px;
-}
-.preview-label {
-  display: block;
-  font-size: 12px;
-  color: #b8cdb6;
-  margin: 20px 0 6px;
-}
-.preview-question {
-  display: block;
-  font-size: 16px;
-  line-height: 1.85;
-}
-.preview-action {
-  display: block;
-  font-size: 14px;
-  line-height: 1.85;
-  color: #e3eacc;
-}
 .home-page .preview-link {
   display: block;
   width: 100%;
@@ -267,89 +201,10 @@ onShareTimeline(() =>
   border-top: 1px solid #ffffff25;
   font-size: 13px;
 }
-.home-page .choices-toggle {
-  width: 100%;
-  text-align: left;
-  min-height: 84px;
-  margin-top: 24px;
-  padding: 16px 0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-  border-bottom: 1px solid #dfe5d7;
-}
-.choices-toggle > text {
-  font-size: 24px;
-  color: #2f684e;
-}
-.choices-toggle .caption {
-  font-size: 12px;
-  margin-top: 5px;
-}
-.entry-choices {
-  padding-top: 16px;
-}
-.industry-grid,
-.round-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin: 12px 0 20px;
-}
-.home-page .industry-grid button {
-  min-height: 84px;
-  text-align: left;
-  padding: 13px;
-  background: #fffefa;
-  border: 1px solid #dfe5d7;
-  border-radius: 12px;
-}
-.industry-grid button > text {
-  display: block;
-  font-size: 13px;
-  font-weight: 700;
-}
-.industry-grid button > text:last-child {
-  font-size: 12px;
-  line-height: 1.75;
-  font-weight: 400;
-  color: #626d64;
-  margin-top: 5px;
-}
-.home-page .round-grid button {
-  min-height: 48px;
-  border: 1px solid #dfe5d7;
-  border-radius: 12px;
-  font-size: 13px;
-  background: #edf1e5;
-}
-.committee-preview {
-  margin-top: 24px;
-  padding: 20px;
-  background: #edf1e5;
-  border: 1px solid #dfe5d7;
-  border-radius: 16px;
-}
 .committee-people {
   display: flex;
   gap: 10px;
   margin-bottom: 16px;
-}
-.committee-preview .caption {
-  margin-top: 10px;
-}
-.home-trust {
-  margin-top: 20px;
-  border-top: 1px solid #dfe5d7;
-}
-.home-page .home-trust button {
-  display: block;
-  width: 100%;
-  min-height: 48px;
-  text-align: left;
-  color: #2f684e;
-  font-size: 13px;
 }
 @media (max-width: 360px) {
   .hero-title {
@@ -361,12 +216,39 @@ onShareTimeline(() =>
   .delivery-strip > view > text:first-child {
     font-size: 12px;
   }
-  .preview-top {
-    display: block;
-  }
-  .preview-tag {
-    display: inline-block;
-    margin-top: 10px;
-  }
+}
+/* ---- refreshed home ---- */
+.home-page .hero-title, .home-page .hero-label, .home-page .hero-description { animation: rise .5s cubic-bezier(.2,.8,.2,1) both; }
+.home-page .hero-description { animation-delay: .08s; }
+.home-page .hero-highlight { background: linear-gradient(#d9f18a, #d9f18a) no-repeat 0 88% / 100% 0.28em; animation: highlight .7s cubic-bezier(.2,.8,.2,1) .35s both; }
+@keyframes highlight { from { background-size: 0 0.28em; } }
+.home-page .hero-primary { margin-top: 18px; animation: rise .5s ease .15s both, breathe 3.2s ease-in-out 1.2s infinite; }
+@keyframes breathe { 50% { box-shadow: 0 0 0 7px #d9f18a55; } }
+.ticker { margin-top: 30px; padding: 16px 18px 12px; border-radius: 20px; background: #233b2f; color: #eef4e3; animation: rise .5s ease .2s both; }
+.ticker-head { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #a9c29d; }
+.ticker-tag { padding: 1px 8px; border: 1px solid #a9c29d55; border-radius: 10px; font-size: 11px; }
+.ticker-body { display: flex; align-items: flex-start; gap: 12px; min-height: 92px; padding: 14px 0 6px; animation: ticker-in .5s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes ticker-in { from { opacity: 0; transform: translateY(14px); } }
+.ticker-question { flex: 1; font-size: 16px; font-weight: 700; line-height: 1.7; }
+.ticker-dots { display: flex; gap: 5px; justify-content: center; }
+.ticker-dot { width: 5px; height: 5px; border-radius: 3px; background: #ffffff33; transition: width .3s, background .3s; }
+.ticker-dot.on { width: 16px; background: #d9f18a; }
+.how-it-works { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
+.how-step { display: flex; flex-direction: column; align-items: center; padding: 14px 6px; border-radius: 16px; background: #fff; border: 1px solid #e3e8da; text-align: center; animation: rise .45s ease both; }
+.how-icon { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 10px; background: #e8f0d6; color: #2f684e; font-size: 15px; }
+.how-title { font-size: 13px; font-weight: 700; margin-top: 8px; }
+.how-sub { font-size: 11px; color: #6a7664; margin-top: 2px; }
+.committee-row { display: flex; align-items: center; gap: 12px; margin-top: 14px; padding: 14px 16px; border-radius: 16px; background: #edf1e5; }
+.committee-row .committee-people { display: flex; flex-shrink: 0; }
+.committee-person + .committee-person { margin-left: -8px; }
+.committee-copy { flex: 1; min-width: 0; }
+.committee-title { display: block; font-size: 13px; font-weight: 700; }
+.committee-sub { display: block; font-size: 11px; color: #6a7664; }
+.committee-link { flex-shrink: 0; min-height: 44px; font-size: 13px; color: #2f684e; font-weight: 600; }
+.home-page .home-trust { display: flex; justify-content: center; align-items: center; gap: 6px; margin-top: 22px; color: #9aa394; font-size: 12px; }
+.home-page .home-trust button { display: inline-flex; align-items: center; width: auto; min-height: 44px; padding: 0 4px; font-size: 12px; color: #5f6f5a; }
+@keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .home-page .hero-title, .home-page .hero-label, .home-page .hero-description, .home-page .hero-highlight, .home-page .hero-primary, .ticker, .ticker-body, .how-step { animation: none !important; }
 }
 </style>

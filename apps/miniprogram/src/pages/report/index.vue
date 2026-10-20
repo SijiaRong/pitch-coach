@@ -14,6 +14,7 @@ import {
 import type { EvaluationReport } from '@pitchcoach/shared';
 import PageHeader from '@/components/PageHeader.vue';
 import InvestorAvatar from '@/components/InvestorAvatar.vue';
+import ScoreReveal from '@/components/ScoreReveal.vue';
 import RiskDiagnosis from '@/components/RiskDiagnosis.vue';
 import ReviewEntryCard from '@/components/ReviewEntryCard.vue';
 import CloudSaveStatus from '@/components/CloudSaveStatus.vue';
@@ -72,7 +73,6 @@ const industry = computed(() => (report.value ? getIndustry(report.value.industr
 const roundName = computed(() => getRound(report.value?.round || 'angel').name);
 const firstAction = computed(() => report.value?.actions[0]);
 const conclusionExpanded = ref(false);
-
 onLoad((options) => {
   if (options?.share) {
     uni.redirectTo({ url: `/pages/project/index?share=${encodeURIComponent(options.share)}` });
@@ -262,32 +262,20 @@ const retry = () =>
       <view v-if="report.mode === 'demo'" class="demo-notice"
         >本报告为虚构项目与固定演示评分，未调用 AI。</view
       >
-      <view class="report-name">{{ report.projectName }}</view
-      ><view class="report-meta"
-        ><text>{{ industry?.name }}</text
-        ><text> / </text><text>{{ roundName }}</text
-        ><text> / </text><text>{{ report.stage }}</text
-        ><text> / </text><text>{{ report.tone === 'sharp' ? '犀利版' : '专业版' }}</text></view
-      >
+      <view class="report-name">{{ report.projectName }}</view>
+      <text class="report-meta">{{ industry?.name }} · {{ roundName }} · {{ report.stage }} · {{ report.tone === 'sharp' ? '犀利版' : '专业版' }}</text>
 
-      <view v-if="report.preferences" class="report-preferences"
-        ><text v-for="preference in report.preferences" :key="preference">{{
-          getPreference(preference).name
-        }}</text></view
-      >
-
-      <view class="score-card"
-        ><view class="score-top"
-          ><view
-            ><text class="score-number mono">{{ report.score ?? '—' }}</text
-            ><text class="score-unit">/ 100</text></view
-          ><view class="verdict-stamp" :class="report.verdict">{{
-            decisionLabel(report)
-          }}</view></view
-        ><view class="score-bottom"
-          ><text>行业加权参考分</text><text>证据覆盖 {{ report.coverage }}%</text></view
-        ></view
-      >
+      <view class="score-card">
+        <view class="score-top">
+          <view
+            ><ScoreReveal :key="report.id" class="score-number mono" :score="report.score" />
+            <text class="score-unit">/ 100</text></view
+          >
+          <view class="verdict-stamp" :class="report.verdict">{{ decisionLabel(report) }}</view>
+        </view>
+        <view class="score-meter"><view class="score-meter-fill" :style="{ width: `${report.score ?? 0}%` }" /></view>
+        <view class="score-bottom"><text>行业加权参考分</text><text>证据覆盖 {{ report.coverage }}%</text></view>
+      </view>
       <view class="verdict-quote"
         ><text class="quote-mark">“</text><text>{{ report.headline }}</text></view
       ><CloudSaveStatus :report="report" /><text v-if="conclusionExpanded" class="report-summary">{{
@@ -296,6 +284,8 @@ const retry = () =>
       <view class="diagnosis-conclusion" :class="{ blocked: report.diagnostics?.redFlags.length }">
         <text class="diagnosis-counts">{{ diagnosticSummary?.counts }}</text>
         <template v-if="conclusionExpanded"
+          ><text class="score-explainer"
+            >分数只计算有原文证据的维度，不等于成功概率；资料不足的维度不记为零分。</text
           ><text
             v-for="reason in report.decisionReasons || []"
             :key="reason"
@@ -321,9 +311,6 @@ const retry = () =>
             : '这是固定虚构示例；真实评审会按实际完成展示。'
         }}</view
       >
-      <text class="score-explainer"
-        >分数只计算有原文证据的维度，不等于项目成功概率。资料不足的维度不记为零分。</text
-      >
 
       <view v-if="firstAction" class="next-action surface">
         <text class="next-action-label">先做这一件事</text>
@@ -348,6 +335,7 @@ const retry = () =>
           {{ item.label }}
         </button></view
       >
+      <view :key="tab" class="tab-pane">
       <RiskDiagnosis v-if="tab === 'risks'" :diagnostics="report.diagnostics" />
 
       <view v-if="tab === 'overview'" class="dimensions"
@@ -437,61 +425,39 @@ const retry = () =>
         ><button class="secondary" @click="copyActions">复制我的改进清单 ↗</button></view
       >
 
-      <view class="report-disclaimer">{{ report.disclaimer }}</view>
-      <view
-        v-if="report.mode === 'live' && tab !== 'actions'"
-        class="actions followthrough-actions"
-      >
-        <view class="action-title">先用好这一轮改进清单</view>
-        <text class="caption">补齐这些证据后，再决定是否需要新一轮评审。</text>
-        <view v-for="action in report.actions" :key="action.priority" class="action-card"
-          ><text class="action-number mono">0{{ action.priority }}</text
-          ><view
-            ><view class="action-dimension">{{ action.dimension }}</view
-            ><text class="action-task">{{ action.task }}</text></view
-          ></view
-        >
-        <button class="secondary" @click="copyActions">复制我的改进清单 ↗</button>
       </view>
+      <view class="report-disclaimer">{{ report.disclaimer }}</view>
       <ReviewEntryCard :report="report" :state="offerState" :offer="offer" />
-      <view class="share-section"
-        ><view class="share-section-title">觉得有用，再分享</view
-        ><text class="share-note">完全自愿；不分享也可查看和复制全部报告。</text>
-        <button class="secondary share-option" @click="makePoster">预览我的脱敏海报 ↗</button>
-        <!-- #ifdef MP-WEIXIN -->
-        <button class="secondary share-option" open-type="share">发给朋友试试 ↗</button>
-        <!-- #endif -->
-        <!-- #ifndef MP-WEIXIN -->
-        <button class="secondary share-option" @click="toolShareFallback">发给朋友试试 ↗</button>
-        <!-- #endif -->
-        <button
-          class="secondary"
-          @click="
-            uni.navigateTo({
-              url: publication
-                ? projectPath(publication)
-                : `/pages/publish/index?id=${encodeURIComponent(report.id)}`,
-            })
-          "
-        >
-          {{ publication ? '查看公开报告 ↗' : '公开报告，添加扫码入口 ↗' }}
-        </button>
-        <text class="share-note">{{
-          publication ? '分享入口指向已授权公开的评估。' : '报告默认私密，公开前需单独确认。'
-        }}</text>
+      <view class="share-section">
+        <view class="share-section-title">觉得有用？分享一下</view>
+        <view class="share-row">
+          <button hover-class="is-pressed" hover-stay-time="80" class="share-tile" @click="makePoster"><text class="share-icon">▣</text><text>生成海报</text></button>
+          <!-- #ifdef MP-WEIXIN -->
+          <button hover-class="is-pressed" hover-stay-time="80" class="share-tile" open-type="share"><text class="share-icon">↗</text><text>发给朋友</text></button>
+          <!-- #endif -->
+          <!-- #ifndef MP-WEIXIN -->
+          <button hover-class="is-pressed" hover-stay-time="80" class="share-tile" @click="toolShareFallback"><text class="share-icon">↗</text><text>发给朋友</text></button>
+          <!-- #endif -->
+          <button hover-class="is-pressed" hover-stay-time="80"
+            class="share-tile"
+            @click="
+              uni.navigateTo({
+                url: publication
+                  ? projectPath(publication)
+                  : `/pages/publish/index?id=${encodeURIComponent(report.id)}`,
+              })
+            "
+          >
+            <text class="share-icon">◎</text><text>{{ publication ? '查看公开页' : '公开报告' }}</text>
+          </button>
+        </view>
         <button class="share-rules" @click="uni.navigateTo({ url: aboutPath('sharing') })">
-          分享会展示哪些内容？ →
+          {{ publication ? '已公开；' : '报告默认私密；' }}分享会展示哪些内容？ →
         </button>
       </view>
       <button class="back-home" @click="uni.reLaunch({ url: '/pages/index/index' })">
-        ← 返回AI投了么
+        ← 回到首页
       </button>
-      <ReviewEntryCard
-        v-if="report.mode === 'demo'"
-        :report="report"
-        :state="offerState"
-        :offer="offer"
-      />
 
       <canvas
         :id="POSTER_CANVAS_ID"
@@ -1221,4 +1187,36 @@ const retry = () =>
   z-index: 2;
   padding: 3px 0;
 }
+/* ---- reveal & motion ---- */
+.report-meta { display: block; margin: 4px 0 16px; }
+.report-name { animation: rise .45s cubic-bezier(.2,.8,.2,1) both; }
+.score-card { position: relative; overflow: hidden; animation: card-in .55s cubic-bezier(.2,.9,.25,1) .05s both; box-shadow: 0 14px 34px #1d33271f; }
+.score-card::after { content: ''; position: absolute; top: 0; bottom: 0; width: 40%; left: -60%; background: linear-gradient(100deg, transparent, #ffffff14, transparent); animation: sheen 1.6s ease .5s 1 both; }
+@keyframes sheen { to { left: 130%; } }
+@keyframes card-in { from { opacity: 0; transform: translateY(16px) scale(.97); } to { opacity: 1; transform: none; } }
+.score-number { font-variant-numeric: tabular-nums; }
+.score-meter { height: 5px; border-radius: 3px; background: #ffffff14; margin: 2px 0 10px; overflow: hidden; }
+.score-meter-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, #8fbf5a, #d9f18a); transform-origin: left; animation: meter .9s cubic-bezier(.2,.8,.2,1) .1s both; }
+@keyframes meter { from { transform: scaleX(0); } }
+.verdict-stamp { animation: stamp .45s cubic-bezier(.3,1.5,.5,1) .7s both; }
+@keyframes stamp { from { opacity: 0; transform: scale(1.8) rotate(-12deg); } 60% { opacity: 1; } to { opacity: 1; transform: rotate(-3deg); } }
+.verdict-quote { animation: rise .45s ease .8s both; }
+.diagnosis-conclusion, .next-action { animation: rise .45s ease .95s both; }
+.next-action { border-color: #cfe0b4; box-shadow: 0 8px 24px #2f684e14; }
+@keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+.report-tabs { position: sticky; top: 0; z-index: 5; background: #f7f7f0; }
+.report-tabs button { transition: color .2s; }
+.report-tabs button.active::before { animation: tab-line .28s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes tab-line { from { transform: scaleX(.2); opacity: 0; } }
+.tab-pane { animation: tab-in .32s ease both; }
+@keyframes tab-in { from { opacity: 0; transform: translateY(8px); } }
+.share-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 14px; }
+.report-page .share-row .share-tile { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: 84px; padding: 12px 4px; border-radius: 16px; background: #fff; border: 1px solid #e0e6d6; font-size: 13px; color: #34463a; transition: transform .15s, background .15s; }
+.report-page .share-row .share-tile:active { transform: scale(.95); background: #f0f6e6; }
+.share-icon { width: 34px; height: 34px; border-radius: 11px; background: #e8f0d6; color: #2f684e; font-size: 16px; display: flex; align-items: center; justify-content: center; }
+@media (prefers-reduced-motion: reduce) {
+  .report-name, .score-card, .score-card::after, .score-meter-fill, .verdict-stamp, .verdict-quote, .diagnosis-conclusion, .next-action, .report-tabs button.active::before, .tab-pane { animation: none !important; }
+  .verdict-stamp { transform: none; }
+}
+.is-pressed { transform: scale(.97); opacity: .92; }
 </style>
