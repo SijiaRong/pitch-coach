@@ -8,6 +8,7 @@ afterEach(async () => {
   await Promise.all(apps.splice(0).map((app) => app.close()));
 });
 const PNG = Buffer.from('89504e470d0a1a0a0000000000000000', 'hex');
+const JPEG = Buffer.from('ffd8ffe000104a46494600010100000100010000ffd9', 'hex');
 
 async function fixture(extra: Record<string, string> = {}) {
   const config = loadConfig({
@@ -24,8 +25,12 @@ async function fixture(extra: Record<string, string> = {}) {
     if (url.pathname === '/cgi-bin/stable_token')
       return Response.json({ access_token: 'test-access', expires_in: 7200 });
     if (url.pathname === '/wxa/getwxacodeunlimit') {
-      bodies.push(JSON.parse(String(options?.body)));
-      return new Response(PNG, { headers: { 'content-type': 'image/png' } });
+      const body = JSON.parse(String(options?.body));
+      bodies.push(body);
+      // Real WeChat returns JPEG by default, and may label transparent PNG as JPEG too.
+      return new Response(body.is_hyaline === true ? PNG : JPEG, {
+        headers: { 'content-type': 'image/jpeg' },
+      });
     }
     throw new Error('Unexpected official endpoint');
   });
@@ -55,6 +60,16 @@ describe('海报邀请码', () => {
       url: '/api/invite/code.png?industry=ai&round=a&format=web',
     });
     expect(web.statusCode).toBe(200);
+  });
+  it('开发版返回真实 PNG；正式版仍保留页面校验', async () => {
+    const { app, bodies } = await fixture({ MINIPROGRAM_ENV: 'develop' });
+    const response = await app.inject({ url: '/api/invite/code.png?industry=saas&round=pre-a' });
+    expect(response.statusCode).toBe(200);
+    expect(response.rawPayload).toEqual(PNG);
+    expect(bodies[0]).toMatchObject({ env_version: 'develop', check_path: false });
+    const formal = await fixture();
+    await formal.app.inject({ url: '/api/invite/code.png?industry=saas&round=pre-a' });
+    expect(formal.bodies[0]).toMatchObject({ env_version: 'release', check_path: true });
   });
   it('场景值可以往返解析，其他内容一律拒绝', () => {
     expect(readInviteScene(makeInviteScene({ industry: 'health', round: 'seed' }))).toEqual({
