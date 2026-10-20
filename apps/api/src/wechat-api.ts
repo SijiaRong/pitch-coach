@@ -92,19 +92,41 @@ export interface WechatIdentity {
   openid: string;
   sessionKey: string;
 }
+/**
+ * Short-lived WeChat session keys, needed only to sign virtual payments.
+ * Every entry shares one TTL, so Map insertion order is also expiry order: expired entries are
+ * swept from the front, and at capacity the oldest login is evicted instead of rejecting new
+ * logins. An evicted user is simply asked to log in again before paying.
+ */
 export class IdentityVault {
   private entries = new Map<string, WechatIdentity & { until: number }>();
+  constructor(
+    private capacity = 50000,
+    private ttlMs = 7000000,
+  ) {}
   put(owner: string, identity: WechatIdentity) {
-    for (const [key, value] of this.entries)
-      if (value.until <= Date.now()) this.entries.delete(key);
-    if (this.entries.size >= 10000) throw new PublicError(503, 'LOGIN_BUSY', '登录服务繁忙');
-    this.entries.set(owner, { ...identity, until: Date.now() + 7000000 });
+    const now = Date.now();
+    for (const [key, value] of this.entries) {
+      if (value.until > now) break;
+      this.entries.delete(key);
+    }
+    // Re-insert so a repeat login moves to the back of the expiry order.
+    this.entries.delete(owner);
+    while (this.entries.size >= this.capacity) {
+      const oldest = this.entries.keys().next();
+      if (oldest.done) break;
+      this.entries.delete(oldest.value);
+    }
+    this.entries.set(owner, { ...identity, until: now + this.ttlMs });
   }
   get(owner: string) {
     const value = this.entries.get(owner);
     if (!value || value.until <= Date.now())
       throw new PublicError(401, 'PAYMENT_LOGIN_REQUIRED', '请重新登录微信后再付款');
     return { openid: value.openid, sessionKey: value.sessionKey };
+  }
+  get size() {
+    return this.entries.size;
   }
   clear() {
     this.entries.clear();

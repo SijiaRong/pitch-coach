@@ -3,6 +3,7 @@ import type {
   CreateOrderInput,
   PrivateProjectPack,
   ProjectOwnerData,
+  ProjectOwnerOrderPage,
   PublishedProject,
   PublishProjectInput,
   VirtualPayParameters,
@@ -36,6 +37,10 @@ export const getAccess = (id: string) =>
   );
 export const getOwnerProject = (id: string) =>
   secured<ProjectOwnerData>(`/api/projects/${id}/owner`);
+export const getOwnerOrders = (id: string, cursor: string) =>
+  secured<ProjectOwnerOrderPage>(
+    `/api/projects/${id}/owner/orders?cursor=${encodeURIComponent(cursor)}`,
+  );
 export const unpublishProject = (id: string) => secured<void>(`/api/projects/${id}`, 'DELETE');
 export const changePrice = (
   id: string,

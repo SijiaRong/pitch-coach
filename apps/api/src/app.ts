@@ -191,7 +191,7 @@ export async function createApp(
         .optional()
         .parse(request.headers['idempotency-key']);
       const job = jobs.create(owner, submission, requestKey);
-      commerce.recordReferral(submission.referralProjectId);
+      commerce.recordReferral(submission.referralProjectId, owner);
       return reply.code(202).send(job);
     },
   );
