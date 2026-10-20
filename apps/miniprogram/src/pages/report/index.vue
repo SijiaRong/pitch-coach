@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue';
-import { onLoad, onShow, onShareAppMessage, onShareTimeline, onUnload } from '@dcloudio/uni-app';
+import { computed, nextTick, ref } from 'vue';
+import { onLoad, onShow, onShareAppMessage, onShareTimeline } from '@dcloudio/uni-app';
 import {
   INVESTORS,
   VOTE_LABELS,
@@ -14,6 +14,7 @@ import {
 import type { EvaluationReport } from '@pitchcoach/shared';
 import PageHeader from '@/components/PageHeader.vue';
 import InvestorAvatar from '@/components/InvestorAvatar.vue';
+import ScoreReveal from '@/components/ScoreReveal.vue';
 import RiskDiagnosis from '@/components/RiskDiagnosis.vue';
 import ReviewEntryCard from '@/components/ReviewEntryCard.vue';
 import CloudSaveStatus from '@/components/CloudSaveStatus.vue';
@@ -72,42 +73,6 @@ const industry = computed(() => (report.value ? getIndustry(report.value.industr
 const roundName = computed(() => getRound(report.value?.round || 'angel').name);
 const firstAction = computed(() => report.value?.actions[0]);
 const conclusionExpanded = ref(false);
-// Reveal: count the score up once per opened report.
-const displayScore = ref(0);
-let scoreTimer: ReturnType<typeof setInterval> | undefined;
-function revealScore(target: number | null | undefined) {
-  if (scoreTimer) clearInterval(scoreTimer);
-  scoreTimer = undefined;
-  if (typeof target !== 'number') return;
-  let reduced = false;
-  // #ifdef H5
-  reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
-  // #endif
-  if (reduced) {
-    displayScore.value = target;
-    return;
-  }
-  const started = Date.now(),
-    duration = 900;
-  displayScore.value = 0;
-  scoreTimer = setInterval(() => {
-    const t = Math.min(1, (Date.now() - started) / duration);
-    displayScore.value = Math.round(target * (1 - Math.pow(1 - t, 3)));
-    if (t >= 1 && scoreTimer) {
-      clearInterval(scoreTimer);
-      scoreTimer = undefined;
-    }
-  }, 30);
-}
-watch(
-  () => report.value?.id,
-  () => revealScore(report.value?.score),
-  { immediate: true },
-);
-onUnload(() => {
-  if (scoreTimer) clearInterval(scoreTimer);
-});
-
 onLoad((options) => {
   if (options?.share) {
     uni.redirectTo({ url: `/pages/project/index?share=${encodeURIComponent(options.share)}` });
@@ -303,8 +268,8 @@ const retry = () =>
       <view class="score-card">
         <view class="score-top">
           <view
-            ><text class="score-number mono">{{ report.score === null || report.score === undefined ? '—' : displayScore }}</text
-            ><text class="score-unit">/ 100</text></view
+            ><ScoreReveal :key="report.id" class="score-number mono" :score="report.score" />
+            <text class="score-unit">/ 100</text></view
           >
           <view class="verdict-stamp" :class="report.verdict">{{ decisionLabel(report) }}</view>
         </view>
