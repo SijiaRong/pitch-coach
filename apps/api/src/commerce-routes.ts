@@ -22,6 +22,9 @@ import { verifyReportProof } from './report-proof';
 import { IdentityVault, WechatApi } from './wechat-api';
 import { VirtualPayment } from './virtual-payment';
 import { parseWechatXml, WechatNotifyCrypto } from './wechat-notify';
+import { ViewCounter } from './view-counter';
+
+const ORDER_PAGE_SIZE = 50;
 
 export function registerCommerce(
   app: FastifyInstance,
@@ -53,6 +56,7 @@ export function registerCommerce(
   };
   const params = z.object({ id: shareIdSchema });
   const orderParams = z.object({ id: z.string().regex(/^[a-f\d]{32}$/) });
+  const views = new ViewCounter(config.OWNER_ID_SECRET || config.SESSION_SECRET);
   const codes = new Map<string, Promise<Buffer>>();
   const miniCode = (scene: string) => {
     const existing = codes.get(scene);
@@ -88,6 +92,7 @@ export function registerCommerce(
   app.addHook('onClose', async () => {
     clearInterval(timer);
     identities.clear();
+    views.clear();
     store?.close();
   });
   app.get('/api/commerce/config', async () => ({
@@ -97,7 +102,7 @@ export function registerCommerce(
     webCodeAvailable: Boolean(config.PUBLIC_WEB_URL),
     webCodeLocal: Boolean(
       config.PUBLIC_WEB_URL &&
-        ['localhost', '127.0.0.1', '[::1]'].includes(new URL(config.PUBLIC_WEB_URL).hostname),
+      ['localhost', '127.0.0.1', '[::1]'].includes(new URL(config.PUBLIC_WEB_URL).hostname),
     ),
     settlement: 'pending_external',
     serviceFeeRateBps: SERVICE_FEE_RATE_BPS,
@@ -148,34 +153,48 @@ export function registerCommerce(
     const { id } = params.parse(request.params),
       db = requireStore();
     const project = db.project(id);
+    if (!views.shouldCount(id, request.ip)) return dto(project);
     db.db.prepare('UPDATE projects SET views=views+1 WHERE id=?').run(id);
     return dto({ ...project, views: project.views + 1 });
   });
+  const ownerOrders = (db: ProjectStore, id: string, cursor?: string) => {
+    const page = db.orderPage(id, ORDER_PAGE_SIZE, cursor);
+    return {
+      orders: page.rows.map((order) => ({
+        ...orderDto(order),
+        contact:
+          order.status === 'paid' && order.contact
+            ? db.unseal<string>(order.contact, `order:${order.id}:contact`)
+            : '',
+        message:
+          order.status === 'paid' && order.message
+            ? db.unseal<string>(order.message, `order:${order.id}:message`)
+            : '',
+      })),
+      nextCursor: page.nextCursor,
+    };
+  };
+  const cursorQuery = z.object({ cursor: z.string().max(200).optional() });
   app.get('/api/projects/:id/owner', async (request) => {
     const owner = requireOwner(request, config),
       { id } = params.parse(request.params),
       db = requireStore();
     const project = db.owned(id, owner);
-    const orders = db.db
-      .prepare('SELECT * FROM orders WHERE project_id=? ORDER BY created_at DESC LIMIT 1000')
-      .all(id) as unknown as OrderRow[];
     return {
       project: dto(project),
       active: Boolean(project.active),
-      orders: orders.map((order) => ({
-        ...orderDto(order),
-        contact:
-          order.status === 'paid' && order.contact
-            ? db.unseal(order.contact, `order:${order.id}:contact`)
-            : '',
-        message:
-          order.status === 'paid' && order.message
-            ? db.unseal(order.message, `order:${order.id}:message`)
-            : '',
-      })),
+      ...ownerOrders(db, id),
       ...db.revenue(id),
       settlement: 'pending_external',
     };
+  });
+  app.get('/api/projects/:id/owner/orders', async (request) => {
+    const owner = requireOwner(request, config),
+      { id } = params.parse(request.params),
+      { cursor } = cursorQuery.parse(request.query),
+      db = requireStore();
+    db.owned(id, owner);
+    return ownerOrders(db, id, cursor);
   });
   app.post('/api/projects/:id/settings', async (request) => {
     const owner = requireOwner(request, config),
@@ -422,11 +441,13 @@ export function registerCommerce(
   return {
     store,
     payments,
-    recordReferral: (id?: string) => {
-      if (id && store)
-        store.db
-          .prepare('UPDATE projects SET referrals=referrals+1 WHERE id=? AND active=1')
-          .run(id);
+    recordReferral: (id: string | undefined, referrer: string) => {
+      if (!id || !store) return;
+      try {
+        store.recordReferral(id, referrer);
+      } catch {
+        // A display counter must never fail the evaluation that carried the referral.
+      }
     },
   };
 }

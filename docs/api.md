@@ -112,3 +112,7 @@ multipart 字段 `file` 和 `consent=true`。支持 `.pdf`、`.pptx`、`.docx`�
 分享与虚拟支付参见 [接口与配置](project-sharing.md)，微信身份和 `/api/me` 系列参见 [账户与云端](accounts-and-cloud.md)。`POST /api/projects` 只接受本人签发报告与独立披露同意，项目方可设置价格及礼物入口。`GET /api/projects/:id` 免费公开授权评估，`code.png?format=mini|web` 获取实际扫码入口。`POST /api/projects/:id/orders` 使用 `kind=unlock|gift`；礼物必须提供有效 `giftId` 且金额匹配服务端目录。已核实后才发放资料或确认礼物，名称随订单快照保留。
 
 `/api/commerce/mine`、项目 `owner/settings/access` 和 `/api/orders/:id[/material]` 只对相应身份开放。资料访问与礼物的 XML 安全模式通知使用 `/api/payments/virtual/notify`；评估支付原有 JSON 通知继续使用 `/api/payments/wechat/notify`。两类支付配置独立，不共用通知协议。
+
+`GET /api/projects/:id/owner` 返回最近 50 笔订单，并附带收入汇总（汇总覆盖全部订单）。如果还有更早的订单，响应会带上 `nextCursor`，用 `GET /api/projects/:id/owner/orders?cursor=<nextCursor>` 继续翻页，直到响应中不再出现 `nextCursor`。游标对客户端不透明，篡改后返回 400。
+
+公开页浏览数对同一访客的同一项目每 24 小时只计一次。去重只在内存中进行，使用访客地址的带密钥哈希，不保存原始 IP。引荐数对每个发起评估的用户只计一次，项目方本人和已停止公开的项目不计数。

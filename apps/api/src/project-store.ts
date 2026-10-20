@@ -70,7 +70,9 @@ export class ProjectStore {
       CREATE TABLE IF NOT EXISTS orders(id TEXT PRIMARY KEY,project_id TEXT NOT NULL REFERENCES projects(id),buyer TEXT NOT NULL,kind TEXT NOT NULL,amount INTEGER NOT NULL,status TEXT NOT NULL,product TEXT NOT NULL,openid TEXT NOT NULL,snapshot TEXT,contact TEXT NOT NULL,message TEXT NOT NULL,idem TEXT NOT NULL,request_hash TEXT NOT NULL,provider_id TEXT UNIQUE,created_at TEXT NOT NULL,paid_at TEXT,refund INTEGER NOT NULL DEFAULT 0,checked_at INTEGER NOT NULL DEFAULT 0,UNIQUE(buyer,idem));
       CREATE INDEX IF NOT EXISTS orders_buyer ON orders(buyer);
       CREATE INDEX IF NOT EXISTS orders_project ON orders(project_id);
-      CREATE TABLE IF NOT EXISTS refunds(id TEXT PRIMARY KEY,order_id TEXT NOT NULL REFERENCES orders(id),amount INTEGER NOT NULL);`);
+      CREATE TABLE IF NOT EXISTS refunds(id TEXT PRIMARY KEY,order_id TEXT NOT NULL REFERENCES orders(id),amount INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS project_referrals(project_id TEXT NOT NULL REFERENCES projects(id),referrer TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(project_id,referrer));
+      CREATE INDEX IF NOT EXISTS orders_project_created ON orders(project_id,created_at,id);`);
     // Additive migrations preserve already accepted orders and encrypted purchase snapshots.
     for (const [table, columns] of Object.entries({
       projects: { fee_consented_at: 'TEXT' },
@@ -109,6 +111,51 @@ export class ProjectStore {
       Buffer.concat([decipher.update(bytes.subarray(28)), decipher.final()]).toString('utf8'),
     );
   }
+  /** Count a referral once per evaluating user per project; the owner's own runs never count. */
+  recordReferral(id: string, referrer: string): boolean {
+    const project = this.db
+      .prepare('SELECT owner FROM projects WHERE id=? AND active=1')
+      .get(id) as { owner: string } | undefined;
+    if (!project || project.owner === referrer) return false;
+    const inserted = this.db
+      .prepare(
+        'INSERT OR IGNORE INTO project_referrals(project_id,referrer,created_at) VALUES(?,?,?)',
+      )
+      .run(id, referrer, new Date().toISOString());
+    if (!inserted.changes) return false;
+    this.db.prepare('UPDATE projects SET referrals=referrals+1 WHERE id=?').run(id);
+    return true;
+  }
+  /** Newest-first page of a project's orders. The cursor is opaque to clients. */
+  orderPage(projectId: string, limit: number, cursor?: string) {
+    let after: { createdAt: string; id: string } | undefined;
+    if (cursor) {
+      const [createdAt, id, extra] = Buffer.from(cursor, 'base64url').toString('utf8').split('|');
+      if (extra !== undefined || !createdAt || !/^[a-f\d]{32}$/.test(id || ''))
+        throw new PublicError(400, 'CURSOR_INVALID', '订单列表已变化，请刷新后重试');
+      after = { createdAt, id };
+    }
+    const rows = (after
+      ? this.db
+          .prepare(
+            'SELECT * FROM orders WHERE project_id=? AND (created_at<? OR (created_at=? AND id<?)) ORDER BY created_at DESC,id DESC LIMIT ?',
+          )
+          .all(projectId, after.createdAt, after.createdAt, after.id, limit + 1)
+      : this.db
+          .prepare(
+            'SELECT * FROM orders WHERE project_id=? ORDER BY created_at DESC,id DESC LIMIT ?',
+          )
+          .all(projectId, limit + 1)) as unknown as OrderRow[];
+    const page = rows.slice(0, limit),
+      last = page.at(-1);
+    return {
+      rows: page,
+      nextCursor:
+        rows.length > limit && last
+          ? Buffer.from(`${last.created_at}|${last.id}`).toString('base64url')
+          : undefined,
+    };
+  }
   publish(owner: string, input: PublishProjectInput) {
     const count = this.db
       .prepare('SELECT count(*) AS n FROM projects WHERE owner=? AND active=1')
@@ -136,8 +183,7 @@ export class ProjectStore {
   }
   project(id: string, active = true): ProjectRow {
     const value = this.db.prepare('SELECT * FROM projects WHERE id=?').get(id) as unknown as
-      | ProjectRow
-      | undefined;
+      ProjectRow | undefined;
     if (!value || (active && !value.active))
       throw new PublicError(404, 'PROJECT_NOT_FOUND', '项目未公开或已停止分享');
     return value;
@@ -150,8 +196,7 @@ export class ProjectStore {
   }
   order(id: string): OrderRow {
     const value = this.db.prepare('SELECT * FROM orders WHERE id=?').get(id) as unknown as
-      | OrderRow
-      | undefined;
+      OrderRow | undefined;
     if (!value) throw new PublicError(404, 'ORDER_NOT_FOUND', '订单不存在');
     return value;
   }

@@ -4,7 +4,7 @@ import { onLoad } from '@dcloudio/uni-app';
 import { PRICE_PRESETS_FEN, formatPrice, parsePrice } from '@pitchcoach/shared';
 import type { ProjectOwnerData } from '@pitchcoach/shared';
 import PageHeader from '@/components/PageHeader.vue';
-import { changePrice, getOwnerProject, unpublishProject } from '@/lib/commerce-api';
+import { changePrice, getOwnerOrders, getOwnerProject, unpublishProject } from '@/lib/commerce-api';
 import { removePublication } from '@/lib/publication';
 
 const data = ref<ProjectOwnerData>(),
@@ -12,6 +12,7 @@ const data = ref<ProjectOwnerData>(),
   tips = ref(false),
   feeConsent = ref(false),
   busy = ref(false),
+  loadingMore = ref(false),
   error = ref('');
 onLoad(async (options) => {
   if (options?.share) await load(options.share);
@@ -26,6 +27,22 @@ async function load(id: string) {
     error.value = cause instanceof Error ? cause.message : '项目读取失败';
   } finally {
     busy.value = false;
+  }
+}
+async function loadMore() {
+  const current = data.value;
+  if (!current?.nextCursor || loadingMore.value) return;
+  loadingMore.value = true;
+  error.value = '';
+  try {
+    const page = await getOwnerOrders(current.project.id, current.nextCursor);
+    const known = new Set(current.orders.map((order) => order.id));
+    current.orders.push(...page.orders.filter((order) => !known.has(order.id)));
+    current.nextCursor = page.nextCursor;
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : '更多订单读取失败';
+  } finally {
+    loadingMore.value = false;
   }
 }
 async function save() {
@@ -160,8 +177,8 @@ function stopSharing() {
       <view class="owner-section"
         ><view class="section-title">参与者与联系线索</view
         ><text class="owner-help"
-          >最近 1000
-          笔订单。仅展示已核实付款、且参与者主动授权的联系方式；这些信息不向公开页访客展示。</text
+          >按时间倒序，每次加载 50
+          笔。仅展示已核实付款、且参与者主动授权的联系方式；这些信息不向公开页访客展示。</text
         ><view v-for="order in data.orders" :key="order.id" class="lead"
           ><view
             >{{
@@ -180,6 +197,8 @@ function stopSharing() {
           ><text v-if="order.contact" class="lead-contact">{{ order.contact }}</text
           ><text v-if="order.message" class="lead-message">{{ order.message }}</text
           ><text class="lead-date">{{ order.createdAt.slice(0, 10) }} · {{ order.id }}</text></view
+        ><button v-if="data.nextCursor" class="load-more" :disabled="loadingMore" @click="loadMore">
+          {{ loadingMore ? '加载中…' : '加载更早的订单' }}</button
         ><text v-if="!data.orders.length" class="owner-help"
           >还没有参与记录。分享公开报告，让合适的人先看到问题，也看到机会。</text
         ></view
@@ -191,6 +210,10 @@ function stopSharing() {
   </view>
 </template>
 <style scoped>
+.load-more {
+  margin-top: 12px;
+  font-size: 13px;
+}
 .owner-title {
   font-size: 27px;
   font-weight: 800;

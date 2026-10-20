@@ -102,9 +102,9 @@ export const publishProjectSchema = z
     report: z.custom<EvaluationReport>((value) =>
       Boolean(
         value &&
-          typeof value === 'object' &&
-          (value as EvaluationReport).version === 1 &&
-          Array.isArray((value as EvaluationReport).investors),
+        typeof value === 'object' &&
+        (value as EvaluationReport).version === 1 &&
+        Array.isArray((value as EvaluationReport).investors),
       ),
     ),
     anonymous: z.boolean().default(true),
@@ -203,10 +203,17 @@ export interface VirtualPayParameters {
   paySig: string;
   signature: string;
 }
+export type ProjectOwnerOrder = CommerceOrder & { contact: string; message: string };
+export interface ProjectOwnerOrderPage {
+  orders: ProjectOwnerOrder[];
+  nextCursor?: string;
+}
 export interface ProjectOwnerData {
   project: PublishedProject;
   active: boolean;
-  orders: (CommerceOrder & { contact: string; message: string })[];
+  orders: ProjectOwnerOrder[];
+  /** Present when older orders exist; pass it to the owner orders endpoint for the next page. */
+  nextCursor?: string;
   grossPaidFen: number;
   refundFen: number;
   verifiedReceiptsFen: number;
