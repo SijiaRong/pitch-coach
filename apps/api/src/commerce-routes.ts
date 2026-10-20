@@ -11,6 +11,9 @@ import {
   makeDemoScene,
   readDemoScene,
   getGift,
+  INDUSTRY_IDS,
+  ROUND_IDS,
+  makeInviteScene,
 } from '@pitchcoach/shared';
 import type { PrivateProjectPack, PublishedProject } from '@pitchcoach/shared';
 import { requireOwner } from './auth';
@@ -107,6 +110,44 @@ export function registerCommerce(
     settlement: 'pending_external',
     serviceFeeRateBps: SERVICE_FEE_RATE_BPS,
   }));
+  // Poster invite: opens the home page with the sharer's industry and round preselected.
+  // The scene holds only those two public catalog ids, so the code is cached and shared by
+  // everyone with the same combination (at most |industries| x |rounds| images).
+  const inviteCodes = new Map<string, Buffer>();
+  app.get(
+    '/api/invite/code.png',
+    { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const input = z
+        .object({
+          industry: z.enum(INDUSTRY_IDS),
+          round: z.enum(ROUND_IDS),
+          format: z.enum(['mini', 'web']).default('mini'),
+        })
+        .parse(request.query);
+      if (input.format === 'web') {
+        if (!config.PUBLIC_WEB_URL)
+          throw new PublicError(503, 'WEB_SHARE_NOT_CONFIGURED', '公开网页地址尚未配置');
+        return reply
+          .type('image/png')
+          .send(
+            await QRCode.toBuffer(
+              `${config.PUBLIC_WEB_URL.replace(/\/$/, '')}/#/pages/index/index?from=poster&industry=${input.industry}&round=${input.round}`,
+              { width: 430, margin: 4, errorCorrectionLevel: 'M' },
+            ),
+          );
+      }
+      if (!config.WECHAT_APP_ID || !config.WECHAT_APP_SECRET)
+        throw new PublicError(503, 'INVITE_CODE_NOT_CONFIGURED', '小程序码服务尚未配置');
+      const scene = makeInviteScene(input);
+      let code = inviteCodes.get(scene);
+      if (!code) {
+        code = await api.miniCode(scene, 'pages/index/index');
+        inviteCodes.set(scene, code);
+      }
+      return reply.type('image/png').send(code);
+    },
+  );
   // Synthetic example only: no personal report, BP, contact or real transaction is encoded.
   app.get(
     '/api/demo/code.png',

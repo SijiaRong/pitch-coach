@@ -51,7 +51,7 @@ export class WechatApi {
       throw new PublicError(502, 'WECHAT_UNAVAILABLE', '微信服务暂不可用，请稍后重试');
     }
   }
-  async miniCode(id: string) {
+  async miniCode(id: string, page = 'pages/project/index') {
     const token = await this.token();
     try {
       const response = await this.fetcher(
@@ -61,7 +61,7 @@ export class WechatApi {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             scene: id,
-            page: 'pages/project/index',
+            page,
             env_version: this.config.MINIPROGRAM_ENV,
             check_path: this.config.MINIPROGRAM_ENV === 'release',
             width: 430,

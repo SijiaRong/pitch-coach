@@ -26,7 +26,7 @@ export const saveCloudReport = (report: EvaluationReport) =>
   own<{ saved: true }>('/api/me/reports', 'POST', { report });
 export async function loginAndSync(): Promise<AccountInfo> {
   // #ifdef H5
-  throw new ApiFailure('WECHAT_LOGIN_REQUIRED', '请在微信小程序中登录；网页可先查看示例和本机报告');
+  throw new ApiFailure('WECHAT_LOGIN_REQUIRED', '请在微信小程序中登录；网页可查看本机报告');
   // #endif
   // #ifdef MP-WEIXIN
   await ensureSession(true);

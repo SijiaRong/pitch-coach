@@ -26,9 +26,9 @@ export function parseReviewOffer(value: unknown): ReviewOffer {
 }
 export const formatPrice = (fen: number) => `¥${(fen / 100).toFixed(2)}`;
 export function offerDescription(state: OfferState, offer?: ReviewOffer) {
-  if (state === 'loading') return '正在确认服务与价格，免费示例随时可看';
-  if (state === 'error' || !offer) return '暂时无法确认服务与价格，可先免费查看示例';
-  if (!offer.liveAvailable) return '真实 AI 评审暂不可用，可免费查看示例';
+  if (state === 'loading') return '正在确认服务与价格…';
+  if (state === 'error' || !offer) return '暂时无法确认服务与价格，请稍后重试';
+  if (!offer.liveAvailable) return 'AI 评审暂时繁忙，请稍后重试';
   if (!offer.paymentsEnabled) return '当前环境未启用收费';
   return `${formatPrice(offer.reviewPriceFen)} / 次真实 AI 评审`;
 }

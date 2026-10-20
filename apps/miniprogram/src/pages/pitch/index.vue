@@ -2,7 +2,6 @@
 import { computed, ref, watch } from 'vue';
 import { onBackPress, onHide, onLoad, onShow, onUnload } from '@dcloudio/uni-app';
 import {
-  EXAMPLES,
   DEFAULT_PREFERENCES,
   FUNDING_ROUNDS,
   INDUSTRIES,
@@ -46,7 +45,7 @@ import ReviewOfferStatus from '@/components/ReviewOfferStatus.vue';
 import { parseReviewOffer, formatPrice } from '@/lib/review-offer';
 import type { ReviewOffer } from '@/lib/review-offer';
 import { aboutPath } from '@/lib/share-entry';
-import { clearRecoverable, freePreviewReport, getDraftEpoch, getKnownRecoverable, getPitchDraft, savePitchDraft, getStartingEvaluation, setStartingEvaluation, rememberBilling, takeEntryNotice } from '@/lib/review-entry';
+import { clearRecoverable, getDraftEpoch, getKnownRecoverable, getPitchDraft, savePitchDraft, getStartingEvaluation, setStartingEvaluation, rememberBilling, takeEntryNotice } from '@/lib/review-entry';
 import type { PitchDraft } from '@/lib/review-entry';
 import { hasAIDataConsent, setAIDataConsent } from '@/lib/privacy';
 const memoryDraft = getPitchDraft();
@@ -110,8 +109,8 @@ const preferenceSummary = computed(() => preferences.value.map((id) => getPrefer
 const availability = computed(() => ({
   checking: '正在连接真实 AI 评审服务',
   ready: '真实 AI 评审已就绪',
-  unavailable: '当前评审阵容暂不可用，可免费查看示例',
-  error: '暂时连接不到服务，可免费查看示例',
+  unavailable: '这组评审阵容暂时繁忙，请稍后重试',
+  error: '暂时连接不到评审服务，请检查网络后重试',
   incomplete: '请选满三种评审偏好，再确认服务状态',
 })[serviceState.value]);
 const currentIndustry = computed(() => getIndustry(industry.value));
@@ -494,32 +493,6 @@ function togglePreference(id: PreferenceId) {
   else if (preferences.value.length < PANEL_SIZE) preferences.value = [...preferences.value, id];
   else preferenceError.value = '先取消一种已选偏好，再邀请新的教练。';
 }
-function demo() {
-  if (busy.value || uploading.value) return;
-  if (!panelReady.value)
-    uni.showToast({ title: '免费示例使用推荐阵容，你的选择已保留', icon: 'none' });
-  openReport(freePreviewReport(industry.value, tone.value, round.value, preferences.value));
-}
-async function fillExample() {
-  if (projectName.value.trim() || description.value.trim() || bpText.value.trim()) {
-    if (!await confirmAction('替换为虚构示例？', '这会替换项目名称、介绍和补充资料。只想了解报告，也可以直接查看免费示例。', '填入示例')) return;
-  }
-  const example = EXAMPLES[industry.value];
-  projectName.value = example.name;
-  description.value = example.description;
-  bpText.value = example.bp;
-  stage.value = ['hardware', 'health', 'climate'].includes(industry.value)
-    ? '已有用户'
-    : '已有收入';
-  expandedBP.value = false;
-  filename.value = '';
-  error.value = '';
-  uploadError.value = '';
-  uploadNotice.value = '';
-  attempted.value = false;
-  exampleFilled.value = true;
-  goTo(2);
-}
 async function upload() {
   if (uploading.value || busy.value) return;
   uploadError.value = '';
@@ -623,7 +596,7 @@ async function submit() {
     if (!confirmed) return;
   }
   if (serviceState.value !== 'ready' && !recoverableJobId.value) {
-    error.value = '真实 AI 服务暂不可用，请稍后重连，或先查看免费示例。';
+    error.value = '评审服务暂时不可用，请稍后重试。本次不会扣费。';
     return;
   }
   busy.value = true;
@@ -656,7 +629,7 @@ async function submit() {
         return;
       }
       if (!config.liveAvailable)
-        throw new Error('当前行业、轮次与偏好的 AI 评审暂不可用，本次不会发起付款。请先查看免费示例。');
+        throw new Error('这组评审阵容暂时不可用，本次不会发起付款。可以换一组教练或稍后重试。');
       if (config.paymentsEnabled && !billing.value) {
         await refreshBilling();
         notice.value = billingError.value ? '' : '订单与额度已确认，请检查本次消耗后再次点击下方按钮。';
@@ -768,7 +741,7 @@ async function submit() {
 
 <template>
   <view class="page pitch-page">
-    <PageHeader back label="模拟评审" />
+    <PageHeader back label="项目评审" />
 
     <view class="wizard-progress" role="progressbar" :aria-valuenow="step + 1" aria-valuemin="1" :aria-valuemax="STEPS.length">
       <view class="wizard-track"><view class="wizard-fill" :style="{ width: `${progress * 100}%` }" /></view>
@@ -806,13 +779,10 @@ async function submit() {
           <text>已恢复上次的草稿</text>
           <button class="inline-link" :disabled="busy || uploading || confirmingExample || configLoading || checkingOrders || Boolean(recoverableJobId)" @click="clearDraft">清空重填</button>
         </view>
-        <view class="shortcut-cards">
-          <button hover-class="is-pressed" hover-stay-time="80" class="shortcut-card" :disabled="uploading" @click="fillExample">
-            <text class="shortcut-icon">✎</text><view><text class="shortcut-title">用虚构项目试一试</text><text class="shortcut-sub">一键填好，直接选择评审设置</text></view>
-          </button>
-          <button hover-class="is-pressed" hover-stay-time="80" class="shortcut-card" :disabled="busy || uploading" @click="demo">
-            <text class="shortcut-icon">◎</text><view><text class="shortcut-title">先看一份示例报告</text><text class="shortcut-sub">免费，不需要填写</text></view>
-          </button>
+        <view class="trust-card">
+          <view class="trust-item"><text class="trust-icon">✎</text><view><text class="trust-title">3 分钟填完</text><text class="trust-sub">名称加几句介绍就能开始，BP 选填</text></view></view>
+          <view class="trust-item"><text class="trust-icon">✳</text><view><text class="trust-title">30–90 秒出报告</text><text class="trust-sub">3 位 AI 投委按你的行业与轮次逐项追问</text></view></view>
+          <view class="trust-item"><text class="trust-icon">◈</text><view><text class="trust-title">报告默认私密</text><text class="trust-sub">只有你主动公开，别人才看得到</text></view></view>
         </view>
       </template>
 
@@ -840,7 +810,6 @@ async function submit() {
           <text :class="{ ok: descriptionLength >= 30 }">{{ descriptionLength >= 30 ? '✓ 足够开始了' : `还差 ${30 - descriptionLength} 字` }}</text>
         </view>
         <text v-if="stepError" class="field-error shake" role="alert">{{ stepError }}</text>
-        <view v-if="exampleFilled" class="example-notice"><text>这是虚构示例，真实评审仍按规则计费。</text></view>
       </template>
 
       <!-- 3. 行业 -->
@@ -892,7 +861,7 @@ async function submit() {
           <button hover-class="is-pressed" hover-stay-time="80" class="tone-card" :class="{ selected: tone === 'sharp' }" :aria-pressed="tone === 'sharp'" @click="tone = 'sharp'; tapFeedback()"><view class="tone-top"><text>✳ 犀利版</text><view class="radio-dot" /></view><text class="tone-description">直说问题，追问到底</text></button>
           <button hover-class="is-pressed" hover-stay-time="80" class="tone-card" :class="{ selected: tone === 'balanced' }" :aria-pressed="tone === 'balanced'" @click="tone = 'balanced'; tapFeedback()"><view class="tone-top"><text>◈ 专业版</text><view class="radio-dot" /></view><text class="tone-description">冷静拆解，给出建议</text></button>
         </view>
-        <view class="panel-heading"><text>这三位教练会审你的项目</text><text class="panel-tag">均为虚构 AI</text></view>
+        <view class="panel-heading"><text>这三位教练会审你的项目</text><text class="panel-tag">AI 教练</text></view>
         <view class="panel-people">
           <view v-for="(person, index) in panel" :key="person.id" class="panel-person" :style="{ animationDelay: `${index * 90}ms` }">
             <InvestorAvatar :investor="person" small />
@@ -944,10 +913,15 @@ async function submit() {
           <text v-if="fieldErrors.bpText" class="field-error" role="alert">{{ fieldErrors.bpText }}</text>
         </view>
 
+        <view class="value-list">
+          <text class="value-title">你会得到</text>
+          <view class="value-item" v-for="(item, index) in ['3 位 AI 投委逐条追问你的项目', '八维评分 + 红旗 / 橙旗风险诊断', '按优先级排好的改进清单', '一张可以发朋友圈的评审海报']" :key="item" :style="{ animationDelay: `${index * 60}ms` }"><text class="value-check">✓</text><text>{{ item }}</text></view>
+        </view>
         <view class="price-card">
           <view class="price-line"><ReviewOfferStatus :state="offerState" :offer="currentOffer" /><text v-if="billing" class="credit-pill">可用 {{ billing.credits }} 次</text></view>
           <view v-if="serviceState !== 'error'" class="service-status" :class="{ unavailable: serviceState !== 'ready' }" role="status"><view class="service-dot" /><text>{{ availability }}</text><button v-if="serviceState === 'unavailable'" class="inline-link" :disabled="configLoading" @click="loadConfig">重试</button></view>
           <button v-else class="inline-link" :disabled="configLoading" @click="loadConfig">{{ configLoading ? '正在重新连接…' : '重新连接 ↻' }}</button>
+          <text class="guarantee">全部失败不计次 · 中途退出不中断 · 报告默认私密</text>
           <view v-if="billing?.orders.some(order => order.status === 'pending')" class="pending-payment">有待确认订单。若已扣款，请先查询，勿重复付款。</view>
           <text v-if="billingError" class="field-error" role="alert">{{ billingError }}</text>
           <button class="fold-row compact" :aria-expanded="ordersExpanded" @click="ordersExpanded = !ordersExpanded"><text class="fold-sub">费用、订单与退款</text><text class="fold-icon" :class="{ open: ordersExpanded }">+</text></button>
@@ -963,8 +937,7 @@ async function submit() {
         </view>
         <view v-if="error" class="error-box shake" role="alert">{{ error }}</view>
         <text v-if="attempted && !submissionResult.success && !recoverableJobId" class="field-error" role="alert">还有内容没填好，已带你回到对应步骤。填写错误不会发起付款。</text>
-        <text class="submit-footnote">{{ recoverableJobId ? '查询的是已有评审，不会创建新订单。' : '通常 30–90 秒出结果，仅供路演练习参考。' }}</text>
-        <button class="demo-link" :disabled="busy || uploading" @click="demo">{{ serviceState === 'ready' ? '不急，先看示例报告 →' : '先免费看一份示例报告 →' }}</button>
+        <text class="submit-footnote">{{ recoverableJobId ? '查询的是已有评审，不会创建新订单。' : '通常 30–90 秒出结果，仅供参考，不构成投资建议。' }}</text>
       </template>
     </view>
 
@@ -1023,12 +996,6 @@ async function submit() {
 @keyframes shake { 20%, 60% { transform: translateX(-5px); } 40%, 80% { transform: translateX(5px); } }
 .draft-line { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; padding: 4px 14px; border-radius: 12px; background: #eef3e4; font-size: 13px; color: #4e6545; }
 .inline-link { min-height: 44px; padding: 10px 0; color: #2f684e; font-size: 13px; font-weight: 600; text-align: left; }
-.shortcut-cards { display: flex; flex-direction: column; gap: 10px; margin-top: 30px; }
-.shortcut-card { display: flex; align-items: center; gap: 14px; width: 100%; padding: 15px 16px; text-align: left; background: #fff; border: 1px solid #e0e6d6; border-radius: 16px; transition: transform .15s, background .15s; }
-.shortcut-card:active { transform: scale(.98); background: #f2f6ea; }
-.shortcut-icon { width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; border-radius: 12px; background: #e8f0d6; color: #2f684e; font-size: 18px; flex-shrink: 0; }
-.shortcut-title { display: block; font-size: 14px; font-weight: 700; }
-.shortcut-sub { display: block; font-size: 12px; color: #6a7664; margin-top: 2px; line-height: 1.6; }
 /* description helpers */
 .prompt-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 .prompt-chip { min-height: 36px; padding: 6px 12px; border-radius: 18px; font-size: 13px; color: #2f684e; background: #edf3e2; border: 1px solid #d4e1c0; transition: transform .15s, background .2s; }
@@ -1039,7 +1006,6 @@ async function submit() {
 .length-track { flex: 1; height: 4px; border-radius: 2px; background: #e6eadf; overflow: hidden; }
 .length-fill { height: 100%; background: #d6a15f; transition: width .3s ease, background .3s; }
 .length-fill.done { background: #4f8a55; }
-.example-notice { margin-top: 14px; background: #fff1dc; border-radius: 11px; padding: 10px 12px; color: #855e2d; font-size: 12px; }
 /* choice cards */
 .choice-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
 .choice-card, .choice-row { position: relative; text-align: left; background: #fff; border: 1.5px solid #e0e6d6; border-radius: 16px; animation: rise .4s cubic-bezier(.2,.8,.2,1) both; transition: transform .16s ease, border-color .2s, background .2s, box-shadow .2s; }
@@ -1128,7 +1094,6 @@ async function submit() {
 .recovery-card > text { display: block; font-size: 13px; color: #56694d; margin: 4px 0 12px; }
 .form-notice { margin-bottom: 14px; font-size: 13px; animation: rise .3s ease both; }
 .submit-footnote { display: block; text-align: center; margin-top: 14px; color: #6b7662; font-size: 12px; }
-.demo-link { display: block; margin: 2px auto 0; min-height: 44px; padding: 10px 0; font-size: 13px; color: #2f684e; }
 /* sticky action bar */
 .action-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; max-width: 560px; margin: 0 auto; display: flex; gap: 10px; padding: 12px 24px calc(12px + env(safe-area-inset-bottom)); background: linear-gradient(180deg, #f7f7f000, #f7f7f0 30%); }
 .action-back { width: 54px; height: 54px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 20px; border-radius: 16px; background: #fff; border: 1px solid #dfe5d7; transition: transform .15s; }
@@ -1169,4 +1134,17 @@ async function submit() {
 }
 @media (max-width: 360px) { .step-title { font-size: 23px; } .choice-card { min-height: 96px; } }
 .is-pressed { transform: scale(.97); opacity: .92; }
+.trust-card { display: flex; flex-direction: column; gap: 14px; margin-top: 30px; padding: 18px 16px; background: #fff; border: 1px solid #e0e6d6; border-radius: 18px; }
+.trust-item { display: flex; gap: 12px; align-items: flex-start; animation: rise .45s ease both; }
+.trust-item:nth-child(2) { animation-delay: .08s; }
+.trust-item:nth-child(3) { animation-delay: .16s; }
+.trust-icon { width: 34px; height: 34px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 11px; background: #e8f0d6; color: #2f684e; font-size: 15px; }
+.trust-title { display: block; font-size: 14px; font-weight: 700; }
+.trust-sub { display: block; font-size: 12px; color: #6a7664; line-height: 1.6; }
+.value-list { margin-top: 18px; padding: 14px 16px; background: #fff; border: 1px solid #e0e6d6; border-radius: 16px; }
+.value-title { display: block; font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+.value-item { display: flex; gap: 8px; align-items: center; font-size: 13px; line-height: 2; color: #33423a; animation: rise .4s ease both; }
+.value-check { color: #2f684e; font-weight: 700; }
+.guarantee { display: block; font-size: 12px; color: #2f684e; font-weight: 600; margin: 2px 0 4px; }
+@media (prefers-reduced-motion: reduce) { .trust-item, .value-item { animation: none !important; } }
 </style>

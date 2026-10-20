@@ -173,7 +173,7 @@ function invite(investor?: SpecialistInvestor) {
           <view class="profile-top"
             ><InvestorAvatar :investor="investor" /><view class="profile-identity"
               ><view class="profile-name">{{ investor.name }}</view
-              ><text class="profile-role">虚构 AI 教练</text></view
+              ><text class="profile-role">AI 教练</text></view
             ><view class="profile-kind">{{ getPreference(investor.preference).name }}</view></view
           >
           <view class="profile-quote">“{{ investor.opening }}”</view>
@@ -218,7 +218,7 @@ function invite(investor?: SpecialistInvestor) {
       >
     </view>
     <view class="notice"
-      >所有教练均为虚构 AI 角色，不对应真实人物或机构。评审仅供项目练习参考。</view
+      >所有教练均为 AI 角色（姓名为设定，非真人），不代表任何机构。评审仅供参考，不构成投资建议。</view
     >
     <view class="directory-footer"
       ><view class="footer-match"

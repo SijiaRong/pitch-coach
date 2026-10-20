@@ -4,7 +4,6 @@ import { onShow } from '@dcloudio/uni-app';
 import {
   decisionLabel,
   publicDiagnosticSummary,
-  createDemoReport,
   getIndustry,
   getRound,
 } from '@pitchcoach/shared';
@@ -349,10 +348,10 @@ const dateLabel = (value: string) => {
       ><text>{{
         tab === 'cloud'
           ? '开启云端保存后，新评估会自动出现在这里。'
-          : '先看一份示例，再开始自己的评估。'
+          : '完成第一次评审后，报告会保存在这里。'
       }}</text
-      ><button class="secondary" @click="openReport(createDemoReport())">
-        查看示例报告 →
+      ><button v-if="tab !== 'cloud'" class="primary lime" @click="openReviewEntry()">
+        开始第一次评审 ↗
       </button></view
     >
     <text class="storage-note"
