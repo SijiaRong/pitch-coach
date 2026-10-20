@@ -94,7 +94,7 @@ onShareTimeline(() =>
       </view>
     </view>
     <view class="committee-row">
-      <view class="committee-people"><InvestorAvatar v-for="person in previewPanel" :key="person.id" :investor="person" small /></view>
+      <view class="committee-people"><view v-for="person in previewPanel" :key="person.id" class="committee-person"><InvestorAvatar :investor="person" small /></view></view>
       <view class="committee-copy"><text class="committee-title">三位 AI 教练，三种视角</text><text class="committee-sub">按行业与轮次匹配 · AI 角色，非真人</text></view>
       <button class="committee-link" @click="uni.navigateTo({ url: '/pages/investors/index' })">认识 →</button>
     </view>
@@ -240,7 +240,7 @@ onShareTimeline(() =>
 .how-sub { font-size: 11px; color: #6a7664; margin-top: 2px; }
 .committee-row { display: flex; align-items: center; gap: 12px; margin-top: 14px; padding: 14px 16px; border-radius: 16px; background: #edf1e5; }
 .committee-row .committee-people { display: flex; flex-shrink: 0; }
-.committee-row .committee-people > * + * { margin-left: -8px; }
+.committee-person + .committee-person { margin-left: -8px; }
 .committee-copy { flex: 1; min-width: 0; }
 .committee-title { display: block; font-size: 13px; font-weight: 700; }
 .committee-sub { display: block; font-size: 11px; color: #6a7664; }

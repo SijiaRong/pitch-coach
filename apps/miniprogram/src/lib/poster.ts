@@ -95,6 +95,8 @@ export function drawPoster(
   anonymous: boolean,
   entry?: PosterEntry,
 ): Promise<string> {
+  if (report.mode === 'live' && !entry?.codePath)
+    return Promise.reject(new Error('海报扫码入口暂不可用，请重新生成海报。'));
   return new Promise((resolve, reject) => {
     const ctx = uni.createCanvasContext(POSTER_CANVAS_ID);
     const model = posterModel(report, anonymous);

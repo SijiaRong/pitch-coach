@@ -133,16 +133,14 @@ textarea {
 }
 /* Shared motion language: pages settle in, controls give tactile feedback. */
 .page {
-  animation: page-in 0.36s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation: pitch-page-enter 0.36s ease-out backwards;
 }
-@keyframes page-in {
+@keyframes pitch-page-enter {
   from {
     opacity: 0;
-    transform: translateY(8px);
   }
   to {
     opacity: 1;
-    transform: none;
   }
 }
 .secondary,

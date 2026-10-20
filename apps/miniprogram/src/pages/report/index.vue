@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue';
-import { onLoad, onShow, onShareAppMessage, onShareTimeline, onUnload } from '@dcloudio/uni-app';
+import { computed, nextTick, ref } from 'vue';
+import { onLoad, onShow, onShareAppMessage, onShareTimeline } from '@dcloudio/uni-app';
 import {
   INVESTORS,
   VOTE_LABELS,
@@ -14,6 +14,7 @@ import {
 import type { EvaluationReport } from '@pitchcoach/shared';
 import PageHeader from '@/components/PageHeader.vue';
 import InvestorAvatar from '@/components/InvestorAvatar.vue';
+import ScoreReveal from '@/components/ScoreReveal.vue';
 import RiskDiagnosis from '@/components/RiskDiagnosis.vue';
 import ReviewEntryCard from '@/components/ReviewEntryCard.vue';
 import CloudSaveStatus from '@/components/CloudSaveStatus.vue';
@@ -72,42 +73,6 @@ const industry = computed(() => (report.value ? getIndustry(report.value.industr
 const roundName = computed(() => getRound(report.value?.round || 'angel').name);
 const firstAction = computed(() => report.value?.actions[0]);
 const conclusionExpanded = ref(false);
-// Reveal: count the score up once per opened report.
-const displayScore = ref(0);
-let scoreTimer: ReturnType<typeof setInterval> | undefined;
-function revealScore(target: number | null | undefined) {
-  if (scoreTimer) clearInterval(scoreTimer);
-  scoreTimer = undefined;
-  if (typeof target !== 'number') return;
-  let reduced = false;
-  // #ifdef H5
-  reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
-  // #endif
-  if (reduced) {
-    displayScore.value = target;
-    return;
-  }
-  const started = Date.now(),
-    duration = 900;
-  displayScore.value = 0;
-  scoreTimer = setInterval(() => {
-    const t = Math.min(1, (Date.now() - started) / duration);
-    displayScore.value = Math.round(target * (1 - Math.pow(1 - t, 3)));
-    if (t >= 1 && scoreTimer) {
-      clearInterval(scoreTimer);
-      scoreTimer = undefined;
-    }
-  }, 30);
-}
-watch(
-  () => report.value?.id,
-  () => revealScore(report.value?.score),
-  { immediate: true },
-);
-onUnload(() => {
-  if (scoreTimer) clearInterval(scoreTimer);
-});
-
 onLoad((options) => {
   if (options?.share) {
     uni.redirectTo({ url: `/pages/project/index?share=${encodeURIComponent(options.share)}` });
@@ -169,6 +134,7 @@ async function renderPoster() {
   albumPermissionDenied.value = false;
   shareHint.value = '在微信图片分享菜单中选择“朋友圈”，发布前仍可确认。';
   posterPath.value = '';
+  entry.value = undefined;
   const drawingAnonymous = anonymous.value;
   await nextTick();
   try {
@@ -180,11 +146,7 @@ async function renderPoster() {
       };
     } else if (!publication.value) {
       // Not published: the code invites friends to start their own review from the same view.
-      try {
-        entry.value = await inviteCodeEntry(report.value.industry, report.value.round || 'angel');
-      } catch {
-        entry.value = undefined;
-      }
+      entry.value = await inviteCodeEntry(report.value.industry, report.value.round || 'angel');
     } else if (publication.value?.example) {
       try {
         entry.value = await demoCodeEntry({
@@ -313,8 +275,8 @@ const retry = () =>
       <view class="score-card">
         <view class="score-top">
           <view
-            ><text class="score-number mono">{{ report.score === null || report.score === undefined ? '—' : displayScore }}</text
-            ><text class="score-unit">/ 100</text></view
+            ><ScoreReveal :key="report.id" class="score-number mono" :score="report.score" />
+            <text class="score-unit">/ 100</text></view
           >
           <view class="verdict-stamp" :class="report.verdict">{{ decisionLabel(report) }}</view>
         </view>
@@ -574,7 +536,9 @@ const retry = () =>
             entry
               ? entry.label?.includes('仅本机')
                 ? '演示二维码仅供本机预览。'
-                : '扫码查看已授权的完整评估。'
+                : publication && !publication.example
+                  ? '扫码查看已授权的完整评估。'
+                  : '扫码，按相同行业与轮次开始评审。'
               : '当前为摘要海报，不含完整资料。'
           }}</text>
         </view></view

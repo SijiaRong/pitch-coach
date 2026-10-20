@@ -16,6 +16,7 @@ function liveReport(): EvaluationReport {
   report.mode = 'live';
   return report;
 }
+const inviteEntry = { codePath: 'wxfile://official-invite-code.png' };
 
 function stubCanvas() {
   const drawn: { text: string; y: number }[] = [];
@@ -89,7 +90,7 @@ describe('海报内容与报告完全一致（不美化评分）', () => {
       } as never,
     ];
     const canvas = stubCanvas();
-    await drawPoster(report, true);
+    await drawPoster(report, true, inviteEntry);
     expect(posterModel(report, true).verdict).toBe('红旗阻断');
     expect(canvas.text()).toContain('红旗阻断');
   });
@@ -109,20 +110,20 @@ describe('海报绘制与隐私', () => {
     report.summary = '客户乙支付了987654元';
     report.investors[0].questions = ['客户乙的987654元合同能续吗？'];
     const canvas = stubCanvas();
-    expect(await drawPoster(report, true)).toBe('wxfile://poster.png');
+    expect(await drawPoster(report, true, inviteEntry)).toBe('wxfile://poster.png');
     const text = canvas.text();
     expect(text).toContain('一个企业服务项目');
     expect(text).toContain(String(report.score));
     expect(text).toContain('AI 生成');
     for (const secret of ['私密项目甲', '客户乙', '987654', report.diagnostics!.orangeFlags[0]?.evidence])
       if (secret) expect(text).not.toContain(secret);
-    expect(canvas.drawn.every((item) => item.y > 0 && item.y < POSTER_HEIGHT)).toBe(true);
+    expect(canvas.drawn.every((item) => item.y > 0 && item.y < POSTER_ENTRY_HEIGHT)).toBe(true);
     expect(canvas.exportImage).toHaveBeenCalledWith(
       expect.objectContaining({
         width: POSTER_WIDTH,
-        height: POSTER_HEIGHT,
+        height: POSTER_ENTRY_HEIGHT,
         destWidth: POSTER_WIDTH * 3,
-        destHeight: POSTER_HEIGHT * 3,
+        destHeight: POSTER_ENTRY_HEIGHT * 3,
       }),
     );
   });
@@ -130,7 +131,7 @@ describe('海报绘制与隐私', () => {
     const report = liveReport();
     report.projectName = '店长助手';
     const canvas = stubCanvas();
-    await drawPoster(report, false);
+    await drawPoster(report, false, inviteEntry);
     expect(canvas.text()).toContain('店长助手');
   });
   it('有扫码入口时画出真实二维码并加高海报，所有文字都在画布内', async () => {
@@ -151,6 +152,20 @@ describe('海报绘制与隐私', () => {
     expect(canvas.drawn.every((item) => item.y > 0 && item.y < POSTER_ENTRY_HEIGHT)).toBe(true);
     expect(canvas.exportImage).toHaveBeenCalledWith(
       expect.objectContaining({ height: POSTER_ENTRY_HEIGHT, destHeight: POSTER_ENTRY_HEIGHT * 3 }),
+    );
+  });
+  it('真实报告缺少有效扫码入口时不导出无二维码海报', async () => {
+    const canvas = stubCanvas();
+    for (const entry of [undefined, { codePath: '' }])
+      await expect(drawPoster(liveReport(), true, entry)).rejects.toThrow('扫码入口暂不可用');
+    expect(canvas.exportImage).not.toHaveBeenCalled();
+  });
+  it('旧演示链接仍可生成明确标识的无二维码海报', async () => {
+    const canvas = stubCanvas();
+    await drawPoster(createDemoReport(), true);
+    expect(canvas.text()).toContain('虚构演示');
+    expect(canvas.exportImage).toHaveBeenCalledWith(
+      expect.objectContaining({ height: POSTER_HEIGHT, destHeight: POSTER_HEIGHT * 3 }),
     );
   });
 });
