@@ -14,13 +14,13 @@ describe('公开报价和服务状态', () => {
     for (const bad of [undefined, {}, { ...response, paymentsEnabled: undefined }, { ...response, liveAvailable: 'yes' }, ...[undefined, 0, -1, 2.99, NaN, Infinity, '188'].map((price) => ({ ...response, reviewPriceFen: price }))])
       expect(() => parseReviewOffer(bad)).toThrow();
   });
-  it('失败或加载忽略旧报价，AI不可用仍提示免费示例', () => {
+  it('失败或加载忽略旧报价，不再引导去看示例', () => {
     for (const state of ['loading', 'error'] as const) {
       expect(offerDescription(state, response)).not.toContain('2.99');
       expect(offerDescription(state, response)).not.toContain('未启用收费');
-      expect(offerDescription(state, response)).toContain('免费');
+      expect(offerDescription(state, response)).not.toContain('示例');
     }
-    expect(offerDescription('ready', { ...response, liveAvailable: false, paymentsEnabled: false })).toContain('暂不可用');
+    expect(offerDescription('ready', { ...response, liveAvailable: false, paymentsEnabled: false })).toContain('稍后重试');
     expect(offerDescription('ready', { ...response, paymentsEnabled: false })).toBe('当前环境未启用收费');
   });
   it('没有有效客服字段就不给出猜测的联系地址', () => {

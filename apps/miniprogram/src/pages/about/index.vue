@@ -35,8 +35,8 @@ function jumpTo(section: string) {
     ><PageHeader back label="使用说明与常见问题" />
     <view class="about-title">先了解规则，<br />再安心开始。</view>
     <text class="about-intro"
-      >AI投了么是一款创业项目自检工具，所有教练均为虚构 AI
-      角色。免费示例使用固定虚构数据，真实评审需要你主动提交资料。</text
+      >AI投了么是一款创业项目自检工具。教练是按行业与轮次设定的 AI
+      角色（非真人），评审只基于你主动提交的资料。</text
     >
     <view class="privacy-entry">
       <view class="about-section-title">资料处理与隐私</view>
@@ -61,7 +61,7 @@ function jumpTo(section: string) {
       <text
         >一次真实 AI
         评审请求，包含八个维度的分析与证据缺口、风险、模拟追问和优先改进清单。向三位专项 AI
-        教练发起请求，报告按实际完成展示。固定虚构示例始终免费。</text
+        教练发起请求，报告按实际完成展示。</text
       >
       <view class="about-section-title faq-following">2. 部分教练失败怎么计次？</view>
       <text
@@ -155,10 +155,10 @@ function jumpTo(section: string) {
     <view class="about-section"
       ><view class="about-section-title">犀利的边界</view
       ><text
-        >点评针对项目与商业逻辑，角色均为虚构 AI
-        投资人。所有评估和“是否投资”结论均是模拟意见，仅用于创业项目自检，不代表真实机构的投资意向、投资承诺或成功概率。</text
+        >点评针对项目与商业逻辑，教练均为 AI
+        角色（非真人）。所有评估和“是否投资”结论均是模拟意见，仅用于创业项目自检，不代表真实机构的投资意向、投资承诺或成功概率。</text
       ><text
-        >演示报告使用虚构项目与固定评分，不会伪装成真实 AI 调用。真实评估失败时会明确报错。</text
+        >评分完全由 AI 依据你提交的资料逐项给出，不会因付费、分享或公开而调整；海报与公开页展示的分数与报告一致。评估失败时会明确报错。</text
       ></view
     >
     <view class="open-source-card"

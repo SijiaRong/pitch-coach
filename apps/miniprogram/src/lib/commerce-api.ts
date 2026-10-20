@@ -8,6 +8,8 @@ import type {
   PublishProjectInput,
   VirtualPayParameters,
   DemoScene,
+  IndustryId,
+  RoundId,
 } from '@pitchcoach/shared';
 import { makeDemoScene } from '@pitchcoach/shared';
 import { ApiFailure, ensureSession, request } from './api';
@@ -83,6 +85,26 @@ export async function projectCodePath(id: string): Promise<string> {
             '扫码入口暂不可用，请确认官方小程序码或公开网页服务已配置',
           ),
         ),
+    }),
+  );
+}
+/** A mini code that brings friends to a new review from the sharer's industry and round. */
+export async function inviteCodeEntry(industry: IndustryId, round: RoundId): Promise<PosterEntry> {
+  const config = await commerceConfig();
+  let format = config.miniCodeAvailable ? 'mini' : 'web';
+  // #ifdef MP-WEIXIN
+  format = 'mini';
+  // #endif
+  if (
+    (format === 'mini' && !config.miniCodeAvailable) ||
+    (format === 'web' && !config.webCodeAvailable)
+  )
+    throw new ApiFailure('SHARE_CODE_UNAVAILABLE', '扫码入口尚未配置');
+  return new Promise((resolve, reject) =>
+    uni.getImageInfo({
+      src: `${BASE}/api/invite/code.png?format=${format}&industry=${industry}&round=${round}`,
+      success: (result) => resolve({ codePath: result.path, label: '扫码，给你的项目也做一次评审' }),
+      fail: () => reject(new ApiFailure('SHARE_CODE_UNAVAILABLE', '扫码入口生成失败')),
     }),
   );
 }

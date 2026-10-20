@@ -290,7 +290,7 @@ const makePoster = () =>
           看看扫码者会看到什么 ↗
         </button></view
       > </template
-    ><view v-else class="empty-state">本机没有这份评估，请先完成一次评估或查看示例。</view>
+    ><view v-else class="empty-state">本机没有这份评估，请先完成一次评审。</view>
   </view>
 </template>
 <style scoped>

@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { onUnmounted, ref } from 'vue';
 import { onLoad, onShow, onShareAppMessage, onShareTimeline } from '@dcloudio/uni-app';
-import { INVESTORS, createDemoReport, getPanel } from '@pitchcoach/shared';
+import { INDUSTRIES, getIndustry, getPanel, getRound } from '@pitchcoach/shared';
 import type { IndustryId, RoundId } from '@pitchcoach/shared';
 import PageHeader from '@/components/PageHeader.vue';
 import BottomNav from '@/components/BottomNav.vue';
 import InvestorAvatar from '@/components/InvestorAvatar.vue';
 import ReviewOfferStatus from '@/components/ReviewOfferStatus.vue';
-import { openReport } from '@/lib/storage';
 import { openReviewEntry } from '@/lib/review-entry';
 import { useReviewOffer } from '@/lib/review-offer';
 import {
@@ -24,11 +23,11 @@ const source = ref('');
 const entryIndustry = ref<IndustryId>('ai');
 const entryRound = ref<RoundId>('angel');
 const previewPanel = getPanel('ai', 'angel');
-const sample = createDemoReport();
-// A gentle ticker of real sample follow-up questions: shows what the product does without a wall of text.
-const tickerItems = sample.investors.flatMap((review) =>
-  review.questions.slice(0, 2).map((question) => ({ question, who: INVESTORS[review.investorId] })),
-);
+// Ticker: each industry's lead coach and their fixed catalog opening line. No fictional project.
+const tickerItems = INDUSTRIES.map((item) => {
+  const who = getPanel(item.id, 'angel')[0];
+  return { question: who.opening, who, industry: item.name };
+});
 const tick = ref(0);
 const tickTimer = setInterval(() => {
   tick.value = (tick.value + 1) % tickerItems.length;
@@ -36,12 +35,14 @@ const tickTimer = setInterval(() => {
 onUnmounted(() => clearInterval(tickTimer));
 const start = (industry?: IndustryId, round?: RoundId) =>
   openReviewEntry({ industry: industry || entryIndustry.value, round: round || entryRound.value });
-const demo = () => openReport(createDemoReport(entryIndustry.value, 'sharp', entryRound.value));
 onLoad((options) => {
   const safe = parseShareEntry(options);
   source.value = safe.from || '';
   entryIndustry.value = safe.industry || 'ai';
   entryRound.value = safe.round || 'angel';
+  // Start the ticker on the sharer's industry so the first line feels relevant.
+  const first = INDUSTRIES.findIndex((item) => item.id === entryIndustry.value);
+  if (first > 0) tick.value = first;
 });
 onShareAppMessage(() =>
   friendShareMessage({ industry: entryIndustry.value, round: entryRound.value }),
@@ -53,7 +54,7 @@ onShareTimeline(() =>
 <template>
   <view class="page home-page">
     <PageHeader />
-    <view v-if="source" class="notice referred-note">朋友邀请你来，先看一份免费示例。</view>
+    <view v-if="source" class="notice referred-note">朋友刚在「{{ getIndustry(entryIndustry).name }} · {{ getRound(entryRound).name }}」接受了 AI 投委会追问，轮到你了。</view>
     <view class="hero">
       <text class="hero-label">✳ 融资前，先听真话</text>
       <view class="hero-title"
@@ -64,20 +65,19 @@ onShareTimeline(() =>
         ><text>288 位 AI 教练</text><text>8 个领域</text><text>6 个轮次</text></view
       >
       <ReviewOfferStatus :state="state" :offer="offer" />
-      <template v-if="source"
-        ><button class="primary lime hero-primary" @click="demo">免费查看示例 ↗</button
-        ><button class="secondary hero-secondary" @click="start()">评审我的项目 →</button></template
-      >
-      <template v-else
-        ><button class="primary lime hero-primary" @click="start()">评审我的项目 ↗</button
-        ><button class="secondary hero-secondary" @click="demo">免费查看示例 →</button></template
-      >
+      <button class="primary lime hero-primary" @click="start()">
+        {{ source ? `用 ${getIndustry(entryIndustry).shortName} · ${getRound(entryRound).name} 视角开始` : '开始评审我的项目' }} ↗
+      </button>
+      <button class="secondary hero-secondary" @click="uni.navigateTo({ url: '/pages/investors/index' })">
+        先认识 AI 投委会 →
+      </button>
+      <view class="trust-strip"><text>报告默认私密</text><text>·</text><text>全部失败不计次</text><text>·</text><text>可随时删除</text></view>
       <button v-if="state === 'error'" class="quiet-link" @click="load()">
         重新确认服务与价格 ↻
       </button>
     </view>
     <view class="ticker" aria-live="polite">
-      <view class="ticker-head"><text>投资人会这样问你</text><text class="ticker-tag">虚构示例</text></view>
+      <view class="ticker-head"><text>AI 投委会会这样问你</text><text class="ticker-tag">{{ tickerItems[tick].industry }}</text></view>
       <view :key="tick" class="ticker-body">
         <InvestorAvatar :investor="tickerItems[tick].who" small />
         <text class="ticker-question">“{{ tickerItems[tick].question }}”</text>
@@ -95,7 +95,7 @@ onShareTimeline(() =>
     </view>
     <view class="committee-row">
       <view class="committee-people"><InvestorAvatar v-for="person in previewPanel" :key="person.id" :investor="person" small /></view>
-      <view class="committee-copy"><text class="committee-title">三位 AI 教练，三种视角</text><text class="committee-sub">均为虚构角色，仅供路演练习</text></view>
+      <view class="committee-copy"><text class="committee-title">三位 AI 教练，三种视角</text><text class="committee-sub">按行业与轮次匹配 · AI 角色，非真人</text></view>
       <button class="committee-link" @click="uni.navigateTo({ url: '/pages/investors/index' })">认识 →</button>
     </view>
     <view class="home-trust"
@@ -251,4 +251,6 @@ onShareTimeline(() =>
 @media (prefers-reduced-motion: reduce) {
   .home-page .hero-title, .home-page .hero-label, .home-page .hero-description, .home-page .hero-highlight, .home-page .hero-primary, .ticker, .ticker-body, .how-step { animation: none !important; }
 }
+.trust-strip { display: flex; justify-content: center; gap: 6px; margin-top: 12px; font-size: 12px; color: #5f6f5a; animation: rise .5s ease .3s both; }
+@media (prefers-reduced-motion: reduce) { .trust-strip { animation: none !important; } }
 </style>

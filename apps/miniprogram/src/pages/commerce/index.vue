@@ -131,9 +131,7 @@ async function inspect(order: CommerceOrder) {
       ></template
     >
     <button class="text-link" @click="load">刷新后台记录 ↻</button
-    ><button class="text-link" @click="uni.navigateTo({ url: '/pages/project/index?example=ai' })">
-      先体验虚构项目的公开页 →
-    </button>
+    >
   </view>
 </template>
 <style scoped>

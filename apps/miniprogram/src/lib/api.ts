@@ -212,7 +212,7 @@ export async function payWithWechat(params: WechatPaymentParams): Promise<void> 
   );
   // #endif
   // #ifndef MP-WEIXIN
-  throw new ApiFailure('WECHAT_REQUIRED', '请在微信小程序中完成支付；浏览器可免费体验示例');
+  throw new ApiFailure('WECHAT_REQUIRED', '请在微信小程序中打开 AI投了么 完成支付');
   // #endif
 }
 
@@ -264,7 +264,7 @@ export async function chooseDocument(): Promise<
           reject(
             new ApiFailure(
               'PRIVACY_DECLINED',
-              '未同意微信隐私指引，未选择或上传文件。仍可粘贴文字或体验示例。',
+              '未同意微信隐私指引，未选择或上传文件。仍可直接粘贴文字。',
             ),
           );
         else if (error.errMsg?.includes('cancel')) resolve(undefined);

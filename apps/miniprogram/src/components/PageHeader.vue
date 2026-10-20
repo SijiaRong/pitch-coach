@@ -15,7 +15,7 @@ const goBack = () =>
       aria-label="AI投了么"
     />
     <view class="brand-name"><text class="brand-title">{{ label || 'AI投了么' }}</text></view>
-    <text v-if="!back" class="brand-purpose">项目路演练习</text>
+    <text v-if="!back" class="brand-purpose">AI 投委会评审</text>
   </view>
 </template>
 

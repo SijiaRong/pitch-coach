@@ -1,13 +1,16 @@
-import { INDUSTRY_IDS, ROUND_IDS } from '@pitchcoach/shared';
+import { INDUSTRY_IDS, ROUND_IDS, readInviteScene } from '@pitchcoach/shared';
 import type { IndustryId, RoundId } from '@pitchcoach/shared';
 export const FRIEND_TITLE = '你的项目，经得起几轮追问？';
-export const TIMELINE_TITLE = '先看免费示例，再准备自己的项目路演。';
+export const TIMELINE_TITLE = '我的项目被 AI 投委会追问了一遍，你的敢来吗？';
 /** Always override WeChat's page-screenshot default, including on a private report. */
 export const SHARE_COVER = '/static/brand/ai-toulema.png';
 export type ShareSource = 'friend' | 'poster' | 'timeline';
 export interface ShareEntry { from?: ShareSource; industry?: IndustryId; round?: RoundId }
 /** Only these three fields may cross devices. Never copy query objects or report IDs. */
 export function parseShareEntry(options?: Record<string, unknown>): ShareEntry {
+  // A poster mini code arrives as `scene`; it only ever carries a public industry and round.
+  const invite = readInviteScene(options?.scene);
+  if (invite) return { from: 'poster', ...invite };
   const entry: ShareEntry = {};
   if (typeof options?.from === 'string' && ['friend', 'poster', 'timeline'].includes(options.from)) entry.from = options.from as ShareSource;
   if (INDUSTRY_IDS.includes(options?.industry as IndustryId)) entry.industry = options!.industry as IndustryId;

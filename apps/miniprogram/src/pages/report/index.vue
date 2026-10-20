@@ -41,7 +41,7 @@ import {
 import type { PosterEntry } from '@/lib/poster';
 import { findPublication, projectPath } from '@/lib/publication';
 import type { PublicationLink } from '@/lib/publication';
-import { getProject, projectCodePath, demoCodeEntry } from '@/lib/commerce-api';
+import { getProject, projectCodePath, demoCodeEntry, inviteCodeEntry } from '@/lib/commerce-api';
 import { sharePoster } from '@/lib/share';
 
 const report = ref<EvaluationReport>();
@@ -174,7 +174,17 @@ async function renderPoster() {
   try {
     if (publication.value && !publication.value.example) {
       await getProject(publication.value.projectId);
-      entry.value = { codePath: await projectCodePath(publication.value.projectId) };
+      entry.value = {
+        codePath: await projectCodePath(publication.value.projectId),
+        label: '扫码查看完整评估，也可以评一评你的项目',
+      };
+    } else if (!publication.value) {
+      // Not published: the code invites friends to start their own review from the same view.
+      try {
+        entry.value = await inviteCodeEntry(report.value.industry, report.value.round || 'angel');
+      } catch {
+        entry.value = undefined;
+      }
     } else if (publication.value?.example) {
       try {
         entry.value = await demoCodeEntry({
@@ -418,7 +428,7 @@ const retry = () =>
             ><InvestorAvatar :investor="INVESTORS[review.investorId]" /><view class="investor-info"
               ><text class="investor-name"
                 >{{ INVESTORS[review.investorId].name }}
-                <text class="fiction-tag">虚构 AI</text></text
+                <text class="fiction-tag">AI 教练</text></text
               ><text class="investor-role">{{ INVESTORS[review.investorId].title }}</text></view
             ><view class="investor-score"
               ><text class="mono">{{ review.score ?? '—' }}</text
@@ -521,13 +531,16 @@ const retry = () =>
             :disabled="posterBusy || saveBusy || shareBusy"
             @click="toggleAnonymous"
           >
-            <text>{{ anonymous ? '☑' : '☐' }} 隐藏项目名称</text
-            ><text>{{ anonymous ? '已匿名' : '显示原名称' }}</text></button
-          ><text class="privacy-reminder">{{
-            anonymous
-              ? '项目名称已隐藏，行业、评分与风险概况仍会展示。'
-              : '当前会展示项目名称，请确认适合公开。'
-          }}</text>
+            <view class="name-switch" :class="{ on: !anonymous }"><view class="name-knob" /></view
+            ><view class="name-copy"
+              ><text class="name-title">显示项目名称</text
+              ><text class="name-sub">{{
+                anonymous ? '已隐藏，只显示行业与轮次' : '投资人能直接记住你的项目'
+              }}</text></view
+            ></button
+          ><text class="privacy-reminder"
+            >海报只含分数、结论、八维评分和教练固定语录，不含你的原文、客户或财务数据。</text
+          >
           <view v-if="posterError" class="error-box">{{ posterError }}</view>
           <button
             v-if="!posterBusy && !posterPath"
@@ -1097,10 +1110,14 @@ const retry = () =>
   min-height: 48px;
   gap: 10px;
 }
-.anonymous-toggle text:last-child {
-  font-size: 12px;
-  color: #68775e;
-}
+.anonymous-toggle { justify-content: flex-start; align-items: center; gap: 12px; text-align: left; }
+.name-switch { position: relative; width: 42px; height: 24px; flex-shrink: 0; border-radius: 12px; background: #cfd6c6; transition: background .25s; }
+.name-switch.on { background: #2f684e; }
+.name-knob { position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px #0003; transition: transform .28s cubic-bezier(.3,1.4,.5,1); }
+.name-switch.on .name-knob { transform: translateX(18px); }
+.name-copy { display: flex; flex-direction: column; }
+.name-title { font-size: 14px; font-weight: 700; color: #1f2b25; }
+.name-sub { font-size: 12px; color: #68775e; }
 .diagnosis-conclusion {
   padding: 14px 15px;
   border-radius: 10px;
