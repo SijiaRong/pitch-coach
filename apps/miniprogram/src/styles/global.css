@@ -131,11 +131,44 @@ textarea {
     transform: translateY(0);
   }
 }
+/* Shared motion language: pages settle in, controls give tactile feedback. */
+.page {
+  animation: page-in 0.36s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.secondary,
+.surface {
+  transition:
+    transform 0.16s ease,
+    background-color 0.16s ease,
+    border-color 0.2s ease;
+}
+.secondary:active {
+  transform: scale(0.98);
+  background: #f2f6ea;
+}
 @media (prefers-reduced-motion: reduce) {
+  .page,
   .hero,
   .account-card,
   .score-panel {
     animation: none;
+  }
+  .secondary,
+  .surface {
+    transition: none;
+  }
+  .secondary:active {
+    transform: none;
   }
   .primary {
     transition: none;

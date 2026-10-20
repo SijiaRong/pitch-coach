@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { onLoad, onShow } from '@dcloudio/uni-app';
 import {
   DEFAULT_PREFERENCES,
@@ -27,6 +27,13 @@ const industry = ref<IndustryId>('ai');
 const round = ref<RoundId>('angel');
 const preference = ref<PreferenceId | ''>('');
 const expandedId = ref('');
+// One coach per screen: swipe or tap the dots to move through the roster.
+const current = ref(0);
+const currentInvestor = computed(() => roster.value[Math.min(current.value, roster.value.length - 1)]);
+function onSwipe(event: { detail: { current: number } }) {
+  current.value = event.detail.current;
+  expandedId.value = '';
+}
 const currentRound = computed(() => getRound(round.value));
 const roster = computed(() =>
   PREFERENCES.filter((item) => !preference.value || item.id === preference.value).map((item) =>
@@ -44,6 +51,10 @@ onLoad((options) => {
     industry.value = options.industry as IndustryId;
   if (options?.round && ROUND_IDS.includes(options.round as RoundId))
     round.value = options.round as RoundId;
+});
+watch(roster, () => {
+  current.value = 0;
+  expandedId.value = '';
 });
 function setIndustry(event: { detail: { value: string | number } }) {
   const selected = INDUSTRIES[Number(event.detail.value)];
@@ -78,7 +89,7 @@ function invite(investor?: SpecialistInvestor) {
       ><text class="eyebrow">换个视角，看清项目</text
       ><view class="investors-title">你关心的难题，<br />让专业视角来追问。</view
       ><text class="investors-description"
-        >先选行业和轮次，再挑你最想听的评审偏好。向三位虚构 AI 教练发起请求，按实际完成展示。</text
+        >选好行业和轮次，左右滑动认识每位教练。</text
       ></view
     >
     <view class="directory-offer"><ReviewOfferStatus :state="state" :offer="offer" compact /><text>选用教练不额外加价；下一步填写自己的项目，不会立即扣费。</text><button @click="uni.navigateTo({ url: aboutPath('billing') })">交付与计次说明 →</button></view>
@@ -149,40 +160,62 @@ function invite(investor?: SpecialistInvestor) {
         }}</text></view
       ><text class="roster-count">{{ roster.length }} 位教练</text></view
     >
-    <view v-for="investor in roster" :key="investor.id" class="investor-profile surface">
-      <view class="profile-top"
-        ><InvestorAvatar :investor="investor" /><view class="profile-identity"
-          ><view class="profile-name">{{ investor.name }}</view
-          ><text class="profile-role">虚构 AI 教练</text></view
-        ><view class="profile-kind">{{ getPreference(investor.preference).name }}</view></view
-      >
-      <view class="profile-quote">“{{ investor.opening }}”</view>
-      <text class="profile-style">{{ investor.style }}</text>
+    <swiper
+      class="roster-swiper"
+      :current="current"
+      previous-margin="0px"
+      next-margin="36px"
+      :duration="320"
+      @change="onSwipe"
+    >
+      <swiper-item v-for="(investor, index) in roster" :key="investor.id">
+        <view class="investor-profile surface" :class="{ dimmed: index !== current }">
+          <view class="profile-top"
+            ><InvestorAvatar :investor="investor" /><view class="profile-identity"
+              ><view class="profile-name">{{ investor.name }}</view
+              ><text class="profile-role">虚构 AI 教练</text></view
+            ><view class="profile-kind">{{ getPreference(investor.preference).name }}</view></view
+          >
+          <view class="profile-quote">“{{ investor.opening }}”</view>
+          <text class="profile-style clamp">{{ investor.style }}</text>
+          <button
+            class="profile-invite"
+            :aria-label="`选用${investor.name}的评审视角，下一步填写项目`"
+            @click="invite(investor)"
+          >
+            <text>选这个视角，去填项目</text><text>→</text>
+          </button>
+        </view>
+      </swiper-item>
+    </swiper>
+    <view class="roster-dots" role="tablist">
+      <button
+        v-for="(investor, index) in roster"
+        :key="investor.id"
+        class="roster-dot"
+        :class="{ on: index === current }"
+        :aria-label="`第 ${index + 1} 位：${investor.name}`"
+        @click="current = index"
+      />
+    </view>
+    <view v-if="currentInvestor" class="current-details">
       <button
         class="profile-details-toggle"
-        :aria-expanded="expandedId === investor.id"
-        @click="expandedId = expandedId === investor.id ? '' : investor.id"
+        :aria-expanded="expandedId === currentInvestor.id"
+        @click="expandedId = expandedId === currentInvestor.id ? '' : currentInvestor.id"
       >
-        <text>{{ expandedId === investor.id ? '收起评审重点' : '查看评审重点与追问' }}</text
-        ><text>{{ expandedId === investor.id ? '−' : '+' }}</text>
+        <text>{{ currentInvestor.name }} 会追问什么</text
+        ><text>{{ expandedId === currentInvestor.id ? '−' : '+' }}</text>
       </button>
-      <view v-if="expandedId === investor.id" class="profile-focus"
-        ><text class="focus-label">会核验哪些证据</text><text>{{ investor.focus }}</text
+      <view v-if="expandedId === currentInvestor.id" class="profile-focus"
+        ><text class="focus-label">会核验哪些证据</text><text>{{ currentInvestor.focus }}</text
         ><text class="focus-label question-label">先试着回答</text
         ><view class="profile-question"
-          ><text class="question-number">01</text><text>{{ investor.question }}</text></view
+          ><text class="question-number">01</text><text>{{ currentInvestor.question }}</text></view
         ><view class="profile-question"
-          ><text class="question-number">02</text><text>{{ investor.roundQuestion }}</text></view
+          ><text class="question-number">02</text><text>{{ currentInvestor.roundQuestion }}</text></view
         ></view
       >
-      <button
-        class="profile-invite"
-        :aria-label="`选用${investor.name}的评审视角，下一步填写项目`"
-        @click="invite(investor)"
-      >
-        <text>选用这个视角，下一步填项目</text><text>→</text>
-      </button>
-      <text class="invite-note">搭配另外两种评审偏好，下一步可调整</text>
     </view>
     <view class="notice"
       >所有教练均为虚构 AI 角色，不对应真实人物或机构。评审仅供项目练习参考。</view
@@ -541,4 +574,18 @@ function invite(investor?: SpecialistInvestor) {
 .investors-page .directory-offer button { min-height: 44px; width: 100%; text-align: left; color: #2f684e; font-size: 12px; padding-top: 8px; }
 .footer-cta-copy text { display: block; }
 .footer-cta-copy text:last-child { font-size: 12px; font-weight: 400; margin-top: 2px; }
+.roster-swiper { height: 330px; margin: 0 -24px 0 0; }
+.roster-swiper swiper-item, .roster-swiper uni-swiper-item { padding-right: 12px; box-sizing: border-box; }
+.investors-page .roster-swiper .investor-profile { height: 318px; margin: 0; display: flex; flex-direction: column; transition: transform .3s ease, opacity .3s ease; }
+.investors-page .roster-swiper .investor-profile.dimmed { transform: scale(.95); opacity: .55; }
+.investors-page .roster-swiper .profile-invite { margin-top: auto; }
+.clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.roster-dots { display: flex; justify-content: center; gap: 2px; margin: 8px 0 4px; }
+.roster-dot { width: 22px; height: 28px; display: flex; align-items: center; justify-content: center; position: relative; }
+.roster-dot::before { content: ''; width: 6px; height: 6px; border-radius: 3px; background: #c9d3bd; transition: width .3s ease, background .3s ease; }
+.roster-dot.on::before { width: 18px; background: #2f684e; }
+.current-details { margin: 4px 0 18px; padding: 0 2px; }
+.current-details .profile-focus { animation: details-in .3s ease both; }
+@keyframes details-in { from { opacity: 0; transform: translateY(8px); } }
+@media (prefers-reduced-motion: reduce) { .investors-page .roster-swiper .investor-profile, .roster-dot::before { transition: none; } .current-details .profile-focus { animation: none; } }
 </style>

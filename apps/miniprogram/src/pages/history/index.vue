@@ -58,6 +58,9 @@ const syncable = computed(() => local.value.filter((report) => report.mode === '
 onShow(() => {
   void refresh();
 });
+const cloudReady = computed(() =>
+  Boolean(config.value?.cloudAvailable && config.value?.wechatLoginAvailable),
+);
 async function refresh() {
   local.value = readHistory();
   error.value = '';
@@ -73,7 +76,9 @@ async function refresh() {
       if (tab.value === 'cloud') tab.value = 'local';
     }
   } catch {
-    error.value = '云端暂时不可用，本机报告仍可查看。';
+    // Config unreachable: show the quiet local-only row instead of an alarming error box.
+    if (config.value?.cloudAvailable) error.value = '云端暂时不可用，本机报告仍可查看。';
+    else config.value = undefined;
   } finally {
     busy.value = false;
   }
@@ -231,7 +236,12 @@ const dateLabel = (value: string) => {
   <view class="page account-page"
     ><PageHeader />
     <view class="account-heading">我的项目档案</view>
-    <view class="account-card">
+    <view v-if="!account && !cloudReady" class="local-only">
+      <text class="local-only-icon">▤</text>
+      <view class="local-only-copy"><text class="local-only-title">报告保存在这台手机上</text><text class="local-only-sub">{{ busy ? '正在确认云端服务…' : '云端同步暂未开放，无需登录' }}</text></view>
+      <button v-if="!busy" class="local-only-retry" @click="refresh">刷新</button>
+    </view>
+    <view v-else class="account-card">
       <template v-if="account"
         ><view class="profile-row"
           ><view class="avatar">{{ (account.displayName || '我').slice(0, 1) }}</view
@@ -600,4 +610,12 @@ const dateLabel = (value: string) => {
 .account-page .notice {
   font-size: 12px;
 }
+.local-only { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 16px; background: #edf1e5; animation: rise .4s ease both; }
+.local-only-icon { width: 36px; height: 36px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 11px; background: #fff; color: #2f684e; }
+.local-only-copy { flex: 1; min-width: 0; }
+.local-only-title { display: block; font-size: 14px; font-weight: 700; }
+.local-only-sub { display: block; font-size: 12px; color: #6a7664; }
+.local-only-retry { min-height: 44px; padding: 0 4px; font-size: 13px; color: #2f684e; flex-shrink: 0; }
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .local-only { animation: none; } }
 </style>

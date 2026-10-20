@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { onBackPress, onHide, onLoad, onShow, onUnload } from '@dcloudio/uni-app';
 import {
   EXAMPLES,
@@ -26,7 +26,6 @@ import type {
   Submission,
 } from '@pitchcoach/shared';
 import PageHeader from '@/components/PageHeader.vue';
-import BottomNav from '@/components/BottomNav.vue';
 import InvestorAvatar from '@/components/InvestorAvatar.vue';
 import {
   chooseDocument,
@@ -155,6 +154,28 @@ const busyDescription = computed(() => ({
   starting: '资料提交成功后，三位教练将分别给出反馈。',
   reviewing: `已完成 ${completed.value} / ${PANEL_SIZE}，最终报告按实际完成展示。`,
 })[phase.value]);
+const WAIT_TIPS = [
+  '教练正在读你的项目介绍',
+  '正在核对商业模式里的关键假设',
+  '正在找最可能被投资人追问的地方',
+  '正在给八个维度逐项打分',
+  '正在整理最该先做的一件事',
+];
+const tipIndex = ref(0);
+let tipTimer: ReturnType<typeof setInterval> | undefined;
+watch(
+  () => busy.value && phase.value === 'reviewing',
+  (waiting) => {
+    if (tipTimer) clearInterval(tipTimer);
+    tipTimer = undefined;
+    if (!waiting) return;
+    tipIndex.value = 0;
+    tipTimer = setInterval(() => {
+      tipIndex.value = (tipIndex.value + 1) % WAIT_TIPS.length;
+    }, 3600);
+  },
+  { immediate: true },
+);
 let operation = 0;
 let configGeneration = 0;
 let requestedPanelKey = '';
@@ -278,6 +299,8 @@ const orderLabels: Record<string, string> = {
 };
 onHide(() => savePitchDraft(captureDraft(), draftEpoch));
 onUnload(() => {
+  if (advanceTimer) clearTimeout(advanceTimer);
+  if (tipTimer) clearInterval(tipTimer);
   uni.$off('pitch:select-panel', selectPanel);
   operation++;
   configGeneration++;
@@ -312,11 +335,109 @@ function startReview(submission: Submission, requestKey: string) {
   return request;
 }
 
+// ---- Step-by-step flow: one question per screen, mostly tap to advance ----
+const STEPS = ['name', 'about', 'industry', 'round', 'stage', 'panel', 'confirm'] as const;
+type StepId = (typeof STEPS)[number];
+const STEP_FIELD: Partial<Record<StepId, 'projectName' | 'description'>> = {
+  name: 'projectName',
+  about: 'description',
+};
+const FIELD_STEP: Record<string, number> = {
+  projectName: 0,
+  description: 1,
+  industry: 2,
+  round: 3,
+  stage: 4,
+  tone: 5,
+  preferences: 5,
+  consent: 6,
+  bpText: 6,
+};
+const DESCRIPTION_PROMPTS = ['服务谁：', '解决什么问题：', '怎么赚钱：', '已经验证了什么：'];
+const STAGE_HINTS: Record<string, string> = {
+  想法阶段: '还在验证问题是否真实',
+  已有原型: '做出了能演示的东西',
+  已有用户: '有人在用，但还没稳定收费',
+  已有收入: '已经有客户付钱',
+  规模增长: '收入在持续放大',
+};
+const draftReady = Boolean(
+  memoryDraft &&
+    submissionSchema.shape.projectName.safeParse(memoryDraft.projectName).success &&
+    submissionSchema.shape.description.safeParse(memoryDraft.description).success,
+);
+const step = ref(draftReady || getKnownRecoverable() ? STEPS.length - 1 : 0);
+const direction = ref<'forward' | 'back'>('forward');
+const stepTried = ref(false);
+const currentStep = computed<StepId>(() => STEPS[step.value]);
+const progress = computed(() => (step.value + 1) / STEPS.length);
+const issues = computed<Record<string, string>>(() => {
+  const fields: Record<string, string> = {};
+  if (!submissionResult.value.success)
+    for (const issue of submissionResult.value.error.issues)
+      fields[String(issue.path[0])] ||= issue.message;
+  return fields;
+});
+const stepError = computed(() => {
+  const field = STEP_FIELD[currentStep.value];
+  return field && (stepTried.value || attempted.value) ? issues.value[field] || '' : '';
+});
+const descriptionLength = computed(() => description.value.trim().length);
+let advanceTimer: ReturnType<typeof setTimeout> | undefined;
+function tapFeedback() {
+  // #ifdef MP-WEIXIN
+  try {
+    uni.vibrateShort({ type: 'light' } as UniApp.VibrateShortOptions);
+  } catch {
+    /* Haptics are a nicety only. */
+  }
+  // #endif
+}
+function goTo(index: number) {
+  if (advanceTimer) clearTimeout(advanceTimer);
+  advanceTimer = undefined;
+  const target = Math.max(0, Math.min(STEPS.length - 1, index));
+  if (target === step.value) return;
+  direction.value = target > step.value ? 'forward' : 'back';
+  step.value = target;
+  stepTried.value = false;
+  uni.pageScrollTo({ scrollTop: 0, duration: 0 });
+}
+function next() {
+  const field = STEP_FIELD[currentStep.value];
+  if (field && issues.value[field]) {
+    stepTried.value = true;
+    tapFeedback();
+    return;
+  }
+  goTo(step.value + 1);
+}
+function back() {
+  if (step.value > 0) goTo(step.value - 1);
+}
+/** Tap a choice: select it, give the selection a beat to animate, then move on. */
+function choose(apply: () => void) {
+  apply();
+  tapFeedback();
+  if (advanceTimer) clearTimeout(advanceTimer);
+  const from = step.value;
+  advanceTimer = setTimeout(() => {
+    advanceTimer = undefined;
+    if (step.value === from) goTo(from + 1);
+  }, 320);
+}
+function addPrompt(prompt: string) {
+  if (description.value.includes(prompt)) return;
+  const current = description.value.replace(/\s+$/, '');
+  description.value = current ? `${current}\n${prompt}` : prompt;
+  exampleFilled.value = false;
+  tapFeedback();
+}
 function scrollToField(field: string) {
-  if (['industry', 'round', 'stage', 'tone', 'preferences'].includes(field)) settingsExpanded.value = true;
   if (field === 'preferences') preferenceEditor.value = true;
   if (field === 'bpText') expandedBP.value = true;
-  void nextTick(() => uni.pageScrollTo({ selector: `#field-${field}`, duration: 250 }));
+  if (field in FIELD_STEP) goTo(FIELD_STEP[field]);
+  stepTried.value = true;
 }
 
 function confirmAction(title: string, content: string, confirmText: string, cancelText = '保留原内容') {
@@ -356,7 +477,7 @@ async function clearDraft() {
   attempted.value = false;
   savePitchDraft(undefined);
   notice.value = '已清空填写内容，可以开始新的项目。';
-  scrollToField('projectName');
+  goTo(0);
 }
 
 function setStage(event: { detail: { value: string | number } }) {
@@ -390,13 +511,14 @@ async function fillExample() {
   stage.value = ['hardware', 'health', 'climate'].includes(industry.value)
     ? '已有用户'
     : '已有收入';
-  expandedBP.value = true;
+  expandedBP.value = false;
   filename.value = '';
   error.value = '';
   uploadError.value = '';
   uploadNotice.value = '';
   attempted.value = false;
   exampleFilled.value = true;
+  goTo(2);
 }
 async function upload() {
   if (uploading.value || busy.value) return;
@@ -646,275 +768,405 @@ async function submit() {
 
 <template>
   <view class="page pitch-page">
-    <PageHeader />
-    <view class="pitch-heading">
-      <text class="eyebrow">开始一场模拟评审</text>
-      <view class="pitch-title">你的项目，<br />准备好被追问了吗？</view>
-      <text class="caption">说清你在做什么，三位 AI 教练接着问。</text>
+    <PageHeader back label="模拟评审" />
+
+    <view class="wizard-progress" role="progressbar" :aria-valuenow="step + 1" aria-valuemin="1" :aria-valuemax="STEPS.length">
+      <view class="wizard-track"><view class="wizard-fill" :style="{ width: `${progress * 100}%` }" /></view>
+      <text class="wizard-count">{{ step + 1 }} / {{ STEPS.length }}</text>
     </view>
 
-    <view class="sample-card">
-      <view><text class="sample-title">还没准备好？</text><text class="sample-caption">先看固定示例，不收费。</text></view>
-      <button class="sample-button" :disabled="busy || uploading" @click="demo">免费示例 ↗</button>
-    </view>
-    <view class="service-status" :class="{ unavailable: serviceState !== 'ready' }" role="status">
-      <view class="service-dot" /><text>{{ availability }}</text>
-      <button v-if="serviceState === 'error' || serviceState === 'unavailable'" class="reconnect-button" :disabled="configLoading" @click="loadConfig">重新连接</button>
-    </view>
-    <view v-if="notice" class="notice form-notice" role="status">{{ notice }}</view>
-    <view v-if="draftRestored" class="draft-card">
-      <view class="draft-heading"><text>已恢复上次填写的项目资料</text><button class="draft-reset" :disabled="busy || uploading || confirmingExample || configLoading || checkingOrders || Boolean(recoverableJobId)" @click="clearDraft">清空重填</button></view>
-      <text>{{ recoverableJobId ? '请先继续已有评审并领取报告，暂不能清空本次项目资料。' : '草稿仅在当前会话中临时保留，请检查后继续；开始新项目可清空重填。' }}</text>
-    </view>
     <view v-if="recoverableJobId && !busy" class="recovery-card">
       <view class="recovery-title">有一份评审可以继续</view>
-      <text>直接查询原评审进度或领取报告，无需重新填写或再次付款。</text>
-      <button class="secondary" :disabled="checkingOrders" @click="submit">继续已有评审 →</button>
+      <text>直接领取报告，无需重填，也不会再次付款。</text>
+      <button class="primary lime" :disabled="checkingOrders" @click="submit">继续已有评审 →</button>
     </view>
+    <view v-if="notice" class="notice form-notice" role="status">{{ notice }}</view>
 
-    <view class="form-section">
-      <view class="form-section-heading"><text class="section-number">01</text><view><view class="form-section-title">说说你的项目</view><text class="section-description">只需名称与 30 字以上介绍，就可以开始。</text></view></view>
-      <view id="field-projectName" class="field-group">
-        <view class="field-label"><text>项目名称 <text class="required-label">必填</text></text><text class="field-counter">{{ projectName.length }}/32</text></view>
-        <input v-model="projectName" class="text-input" :class="{ invalid: fieldErrors.projectName }" placeholder="例如：帮小店做会员运营的工具" :maxlength="32" aria-label="项目名称，必填，最多32字" :aria-invalid="Boolean(fieldErrors.projectName)" @input="exampleFilled = false" />
-        <text v-if="fieldErrors.projectName" class="field-error" role="alert">{{ fieldErrors.projectName }}</text>
-      </view>
-      <view id="field-description" class="field-group">
-        <view class="field-label"><text>项目介绍 <text class="required-label">必填</text></text><button class="text-link" :disabled="uploading" @click="fillExample">填入虚构示例</button></view>
-        <view class="description-guide"><text>服务谁</text><text>解决什么问题</text><text>怎么赚钱</text><text>验证了什么</text></view>
-        <textarea v-model="description" class="description-input" :class="{ invalid: fieldErrors.description }" placeholder="我们为……提供……，通过……收费。目前已经……。有数据就说数据，还没验证也可以坦诚说明。" :maxlength="3000" :auto-height="false" aria-label="项目介绍，必填，30至3000字" :aria-invalid="Boolean(fieldErrors.description)" @input="exampleFilled = false" />
-        <view class="input-footer"><text :class="{ 'counter-short': description.trim().length > 0 && description.trim().length < 30 }">{{ description.trim().length < 30 ? `至少 30 字，还差 ${30 - description.trim().length} 字` : '可以开始了' }}</text><text>{{ description.length }}/3000</text></view>
-        <text v-if="fieldErrors.description" class="field-error" role="alert">{{ fieldErrors.description }}</text>
-      </view>
-      <view v-if="exampleFilled" class="example-notice"><text>当前填写的是虚构示例，真实 AI 评审仍按页面规则计费。</text><button class="text-link" @click="demo">只看免费示例 →</button></view>
-    </view>
-
-    <view class="form-section settings-section">
-      <button class="settings-summary" :aria-expanded="settingsExpanded" @click="settingsExpanded = !settingsExpanded">
-        <view><view class="form-section-title">02 / {{ panelReady ? '已配好三种评审视角' : `已选 ${preferences.length} / 3 种，请补全` }}</view><text>{{ settingsSummary }}</text><text>{{ preferenceSummary || '请选择三种评审偏好' }}</text><text class="settings-edit">调整行业、轮次与教练 {{ settingsExpanded ? '−' : '+' }}</text></view>
-      </button>
-      <view v-if="settingsExpanded" class="settings-expanded">
-      <view id="field-industry" class="field-group">
-        <view class="field-label"><text>项目所属行业</text><text class="field-hint">选择最接近的一项</text></view>
-        <view class="industry-choices"><button v-for="item in INDUSTRIES" :key="item.id" class="industry-choice" :class="{ selected: industry === item.id }" :aria-pressed="industry === item.id" @click="industry = item.id"><text>{{ item.icon }}</text> {{ item.shortName }}</button></view>
-      </view>
-      <view id="field-round" class="field-group">
-        <view class="field-label"><text>目标融资轮次</text><text class="field-hint">决定追问侧重点</text></view>
-        <view class="round-choices"><button v-for="item in FUNDING_ROUNDS" :key="item.id" class="round-choice" :class="{ selected: round === item.id }" :aria-pressed="round === item.id" @click="round = item.id">{{ item.name }}</button></view>
-        <view class="round-focus"><text class="round-focus-label">{{ currentRound.name }}会重点问</text><text>{{ currentRound.question }}</text></view>
-      </view>
-      <view id="field-stage" class="field-group"><view class="field-label">项目目前走到哪一步</view><picker :range="STAGES" :value="STAGES.indexOf(stage)" aria-label="选择项目阶段" @change="setStage"><view class="stage-picker"><text>{{ stage }}</text><text class="muted">更改 ⌄</text></view></picker></view>
-      <view id="field-tone" class="field-group"><view class="field-label">希望怎样收到反馈</view><view class="tone-options"><button class="tone-card" :class="{ selected: tone === 'sharp' }" :aria-pressed="tone === 'sharp'" @click="tone = 'sharp'"><view class="tone-top"><text>✳ 犀利版</text><view class="radio-dot" /></view><text class="tone-description">直说问题，追问商业逻辑</text></button><button class="tone-card" :class="{ selected: tone === 'balanced' }" :aria-pressed="tone === 'balanced'" @click="tone = 'balanced'"><view class="tone-top"><text>◈ 专业版</text><view class="radio-dot" /></view><text class="tone-description">冷静拆解，给出改进建议</text></button></view></view>
-      <view id="field-preferences" class="assigned-panel">
-        <view class="assigned-label"><text>本次 AI 评审阵容</text><text>{{ currentIndustry.shortName }} · {{ currentRound.name }}</text></view>
-        <view class="panel-people"><view v-for="person in panel" :key="person.id" class="panel-person"><InvestorAvatar :investor="person" small /><view class="panel-person-copy"><text class="panel-name">{{ person.name }}</text><text class="panel-title">{{ person.title }}</text></view><text class="panel-type">虚构 AI</text></view></view>
-        <button class="panel-customize" :aria-expanded="preferenceEditor" @click="preferenceEditor = !preferenceEditor"><text>已选 {{ preferences.length }} / {{ PANEL_SIZE }} 位 · 更换评审偏好</text><text>{{ preferenceEditor ? '收起 −' : '展开 +' }}</text></button>
-        <view v-if="preferenceEditor" class="preference-editor">
-          <text class="caption">每种偏好对应一位教练。先取消已选项，再补选，保持三种不同偏好。</text>
-          <view class="preference-choices"><button v-for="item in PREFERENCES" :key="item.id" :class="{ selected: preferences.includes(item.id) }" :aria-pressed="preferences.includes(item.id)" @click="togglePreference(item.id)">{{ preferences.includes(item.id) ? '✓ ' : '' }}{{ item.name }}</button></view>
-          <text v-if="preferenceError || !panelReady || fieldErrors.preferences" class="preference-hint" role="alert">{{ preferenceError || fieldErrors.preferences || '请补选至三位教练，或恢复推荐阵容。' }}</text>
-          <button class="restore-panel" @click="preferences = [...DEFAULT_PREFERENCES]; preferenceError = ''">恢复推荐的三人阵容</button>
+    <view :key="step" class="step-pane" :class="direction">
+      <!-- 1. 名称 -->
+      <template v-if="currentStep === 'name'">
+        <text class="step-eyebrow">先认识一下</text>
+        <view class="step-title">你的项目叫什么？</view>
+        <input
+          v-model="projectName"
+          class="big-input"
+          :class="{ invalid: stepError }"
+          placeholder="例如：小店会员通"
+          :maxlength="32"
+          :focus="!draftRestored"
+          confirm-type="next"
+          aria-label="项目名称，必填，最多32字"
+          :aria-invalid="Boolean(stepError)"
+          @input="exampleFilled = false"
+          @confirm="next"
+        />
+        <view class="input-meta"><text>一个能被记住的名字就够了</text><text>{{ projectName.length }}/32</text></view>
+        <text v-if="stepError" class="field-error shake" role="alert">{{ stepError }}</text>
+        <view v-if="draftRestored" class="draft-line">
+          <text>已恢复上次的草稿</text>
+          <button class="inline-link" :disabled="busy || uploading || confirmingExample || configLoading || checkingOrders || Boolean(recoverableJobId)" @click="clearDraft">清空重填</button>
         </view>
-        <button class="panel-directory" @click="uni.navigateTo({ url: `/pages/investors/index?industry=${industry}&round=${round}` })">认识全部 {{ PREFERENCES.length }} 位教练 →</button>
-      </view>
-    </view>
-      </view>
+        <view class="shortcut-cards">
+          <button hover-class="is-pressed" hover-stay-time="80" class="shortcut-card" :disabled="uploading" @click="fillExample">
+            <text class="shortcut-icon">✎</text><view><text class="shortcut-title">用虚构项目试一试</text><text class="shortcut-sub">一键填好，直接选择评审设置</text></view>
+          </button>
+          <button hover-class="is-pressed" hover-stay-time="80" class="shortcut-card" :disabled="busy || uploading" @click="demo">
+            <text class="shortcut-icon">◎</text><view><text class="shortcut-title">先看一份示例报告</text><text class="shortcut-sub">免费，不需要填写</text></view>
+          </button>
+        </view>
+      </template>
 
-    <view class="form-section">
-      <view class="form-section-heading"><text class="section-number">03</text><view><view class="form-section-title">资料与授权</view><text class="section-description">BP 选填；上传与真实评审前需要你的授权。</text></view></view>
-      <view id="field-consent" class="consent-card" :class="{ invalid: fieldErrors.consent }">
-        <button class="consent-row" role="checkbox" :aria-checked="consent" @click="toggleConsent"><view class="checkbox" :class="{ checked: consent }">{{ consent ? '✓' : '' }}</view><text>我同意提取本次资料文字，并交给 DeepSeek 评审。报告不会自动公开。</text></button>
+      <!-- 2. 介绍 -->
+      <template v-else-if="currentStep === 'about'">
+        <text class="step-eyebrow">{{ projectName || '你的项目' }}</text>
+        <view class="step-title">用几句话说清它</view>
+        <text class="step-sub">点下面的提示，按顺序写就行；还没验证也可以直说。</text>
+        <view class="prompt-chips">
+          <button hover-class="is-pressed" hover-stay-time="80" v-for="prompt in DESCRIPTION_PROMPTS" :key="prompt" class="prompt-chip" :class="{ used: description.includes(prompt) }" @click="addPrompt(prompt)">{{ description.includes(prompt) ? '✓ ' : '+ ' }}{{ prompt.replace('：', '') }}</button>
+        </view>
+        <textarea
+          v-model="description"
+          class="big-textarea"
+          :class="{ invalid: stepError }"
+          placeholder="我们为……提供……，通过……收费。目前已经……"
+          :maxlength="3000"
+          :auto-height="false"
+          aria-label="项目介绍，必填，30至3000字"
+          :aria-invalid="Boolean(stepError)"
+          @input="exampleFilled = false"
+        />
+        <view class="length-meter">
+          <view class="length-track"><view class="length-fill" :class="{ done: descriptionLength >= 30 }" :style="{ width: `${Math.min(1, descriptionLength / 30) * 100}%` }" /></view>
+          <text :class="{ ok: descriptionLength >= 30 }">{{ descriptionLength >= 30 ? '✓ 足够开始了' : `还差 ${30 - descriptionLength} 字` }}</text>
+        </view>
+        <text v-if="stepError" class="field-error shake" role="alert">{{ stepError }}</text>
+        <view v-if="exampleFilled" class="example-notice"><text>这是虚构示例，真实评审仍按规则计费。</text></view>
+      </template>
 
-        <button class="privacy-link" @click="uni.navigateTo({ url: '/pages/privacy/index?section=ai' })">DeepSeek 资料处理与撤回同意 →</button>
-        <button class="privacy-link" @click="uni.navigateTo({ url: '/pages/privacy/index?section=terms' })">使用须知 →</button>
-        <text v-if="fieldErrors.consent" class="field-error" role="alert">请先阅读并勾选资料处理授权。</text>
-      </view>
-      <view id="field-bpText" class="field-group">
-        <view class="field-label"><text>补充商业计划书</text><text class="field-hint">选填，不上传也能评审</text></view>
-        <button class="upload-box" :disabled="uploading || busy" @click="upload"><view class="upload-icon">{{ uploading ? '◌' : '↥' }}</view><view class="upload-copy"><text class="upload-title">{{ uploading ? '正在选择文件或提取文字…' : filename || '选择一份 BP 文件' }}</text><text class="upload-description">PDF / PPTX / DOCX / TXT / MD · 最大 10 MB</text></view><text class="upload-plus">{{ filename ? '↻' : '+' }}</text></button>
-        <text class="upload-help">仅提取文字，扫描图片请先转成文字。新文件会替换现有正文。</text>
-        <text v-if="uploadError" class="field-error" role="alert">{{ uploadError }}</text>
-        <text v-if="uploadNotice" class="upload-notice" role="status">{{ uploadNotice }}</text>
-        <button class="paste-toggle" :aria-expanded="expandedBP" @click="expandedBP = !expandedBP"><text>{{ expandedBP ? '收起补充正文' : '也可以直接粘贴文字' }}</text><text>{{ expandedBP ? '−' : '+' }}</text></button>
-        <view v-if="expandedBP"><textarea v-model="bpText" class="bp-input" :disabled="uploading" placeholder="目标客户、市场、竞争、收入与成本、团队、融资用途……提供已有的信息即可。" :maxlength="50000" aria-label="补充项目资料，选填，最多50000字" @input="exampleFilled = false" /><text class="bp-count">{{ bpText.length.toLocaleString() }}/50,000 字 · 可编辑</text></view>
-        <text v-if="fieldErrors.bpText" class="field-error" role="alert">{{ fieldErrors.bpText }}</text>
-      </view>
+      <!-- 3. 行业 -->
+      <template v-else-if="currentStep === 'industry'">
+        <text class="step-eyebrow">评审视角</text>
+        <view class="step-title">它属于哪个行业？</view>
+        <text class="step-sub">选最接近的一项，点一下就会进入下一步。</text>
+        <view class="choice-grid">
+          <button hover-class="is-pressed" hover-stay-time="80" v-for="(item, index) in INDUSTRIES" :key="item.id" class="choice-card" :class="{ selected: industry === item.id }" :style="{ animationDelay: `${index * 35}ms` }" :aria-pressed="industry === item.id" @click="choose(() => (industry = item.id))">
+            <text class="choice-icon">{{ item.icon }}</text>
+            <text class="choice-name">{{ item.name }}</text>
+            <text class="choice-sub">{{ item.subtitle }}</text>
+            <text class="choice-check">✓</text>
+          </button>
+        </view>
+      </template>
+
+      <!-- 4. 轮次 -->
+      <template v-else-if="currentStep === 'round'">
+        <text class="step-eyebrow">{{ currentIndustry.name }}</text>
+        <view class="step-title">准备融哪一轮？</view>
+        <text class="step-sub">轮次不同，投资人追问的重点也不同。</text>
+        <view class="choice-list">
+          <button hover-class="is-pressed" hover-stay-time="80" v-for="(item, index) in FUNDING_ROUNDS" :key="item.id" class="choice-row" :class="{ selected: round === item.id }" :style="{ animationDelay: `${index * 40}ms` }" :aria-pressed="round === item.id" @click="choose(() => (round = item.id))">
+            <view class="choice-row-copy"><text class="choice-name">{{ item.name }}</text><text class="choice-sub">“{{ item.question }}”</text></view>
+            <text class="choice-check">✓</text>
+          </button>
+        </view>
+      </template>
+
+      <!-- 5. 阶段 -->
+      <template v-else-if="currentStep === 'stage'">
+        <text class="step-eyebrow">{{ currentIndustry.name }} · {{ currentRound.name }}</text>
+        <view class="step-title">项目现在走到哪一步？</view>
+        <text class="step-sub">如实选择，教练会按这个阶段来要求证据。</text>
+        <view class="choice-list">
+          <button hover-class="is-pressed" hover-stay-time="80" v-for="(item, index) in STAGES" :key="item" class="choice-row" :class="{ selected: stage === item }" :style="{ animationDelay: `${index * 40}ms` }" :aria-pressed="stage === item" @click="choose(() => (stage = item))">
+            <view class="choice-row-copy"><text class="choice-name">{{ item }}</text><text class="choice-sub">{{ STAGE_HINTS[item] }}</text></view>
+            <text class="choice-check">✓</text>
+          </button>
+        </view>
+      </template>
+
+      <!-- 6. 评审阵容 -->
+      <template v-else-if="currentStep === 'panel'">
+        <text class="step-eyebrow">你的 AI 投委会</text>
+        <view class="step-title">想听哪种说法？</view>
+        <view class="tone-options">
+          <button hover-class="is-pressed" hover-stay-time="80" class="tone-card" :class="{ selected: tone === 'sharp' }" :aria-pressed="tone === 'sharp'" @click="tone = 'sharp'; tapFeedback()"><view class="tone-top"><text>✳ 犀利版</text><view class="radio-dot" /></view><text class="tone-description">直说问题，追问到底</text></button>
+          <button hover-class="is-pressed" hover-stay-time="80" class="tone-card" :class="{ selected: tone === 'balanced' }" :aria-pressed="tone === 'balanced'" @click="tone = 'balanced'; tapFeedback()"><view class="tone-top"><text>◈ 专业版</text><view class="radio-dot" /></view><text class="tone-description">冷静拆解，给出建议</text></button>
+        </view>
+        <view class="panel-heading"><text>这三位教练会审你的项目</text><text class="panel-tag">均为虚构 AI</text></view>
+        <view class="panel-people">
+          <view v-for="(person, index) in panel" :key="person.id" class="panel-person" :style="{ animationDelay: `${index * 90}ms` }">
+            <InvestorAvatar :investor="person" small />
+            <view class="panel-person-copy"><text class="panel-name">{{ person.name }}</text><text class="panel-title">{{ person.title }}</text></view>
+          </view>
+        </view>
+        <button class="inline-link panel-toggle" :aria-expanded="preferenceEditor" @click="preferenceEditor = !preferenceEditor">{{ preferenceEditor ? '收起' : '换几位教练' }} {{ preferenceEditor ? '−' : '→' }}</button>
+        <view v-if="preferenceEditor" class="preference-editor">
+          <text class="caption">选满三种关注点，每种对应一位教练。</text>
+          <view class="preference-choices"><button v-for="item in PREFERENCES" :key="item.id" :class="{ selected: preferences.includes(item.id) }" :aria-pressed="preferences.includes(item.id)" @click="togglePreference(item.id); tapFeedback()">{{ preferences.includes(item.id) ? '✓ ' : '' }}{{ item.name }}</button></view>
+          <text v-if="preferenceError || !panelReady || fieldErrors.preferences" class="preference-hint" role="alert">{{ preferenceError || fieldErrors.preferences || `还差 ${PANEL_SIZE - preferences.length} 位，或恢复推荐阵容。` }}</text>
+          <view class="editor-links">
+            <button class="inline-link" @click="preferences = [...DEFAULT_PREFERENCES]; preferenceError = ''">恢复推荐阵容</button>
+            <button class="inline-link" @click="uni.navigateTo({ url: `/pages/investors/index?industry=${industry}&round=${round}` })">认识全部教练 →</button>
+          </view>
+        </view>
+      </template>
+
+      <!-- 7. 确认 -->
+      <template v-else>
+        <text class="step-eyebrow">最后一步</text>
+        <view class="step-title">确认一下，就开始</view>
+        <view class="summary-card">
+          <button hover-class="is-pressed" hover-stay-time="80" class="summary-row" @click="goTo(0)"><text class="summary-label">项目</text><text class="summary-value">{{ projectName || '未填写' }}</text><text class="summary-edit">改</text></button>
+          <button hover-class="is-pressed" hover-stay-time="80" class="summary-row" @click="goTo(2)"><text class="summary-label">视角</text><text class="summary-value">{{ currentIndustry.shortName }} · {{ currentRound.name }} · {{ stage }}</text><text class="summary-edit">改</text></button>
+          <button hover-class="is-pressed" hover-stay-time="80" class="summary-row" @click="goTo(5)"><text class="summary-label">教练</text><text class="summary-value">{{ panelReady ? preferenceSummary : `已选 ${preferences.length} / 3` }} · {{ tone === 'sharp' ? '犀利' : '专业' }}</text><text class="summary-edit">改</text></button>
+        </view>
+
+        <button hover-class="is-pressed" hover-stay-time="80" id="field-consent" class="consent-toggle" :class="{ checked: consent, invalid: fieldErrors.consent }" role="checkbox" :aria-checked="consent" @click="toggleConsent(); tapFeedback()">
+          <view class="switch"><view class="switch-knob" /></view>
+          <text>同意把本次资料交给 DeepSeek 评审，报告不会自动公开</text>
+        </button>
+        <view class="consent-links">
+          <button class="inline-link" @click="uni.navigateTo({ url: '/pages/privacy/index?section=ai' })">资料怎么处理</button>
+          <button class="inline-link" @click="uni.navigateTo({ url: '/pages/privacy/index?section=terms' })">使用须知</button>
+        </view>
+        <text v-if="fieldErrors.consent" class="field-error shake" role="alert">请先打开上面的授权开关。</text>
+
+        <button class="fold-row" :aria-expanded="expandedBP" @click="expandedBP = !expandedBP">
+          <view><text class="fold-title">补充商业计划书</text><text class="fold-sub">{{ filename || (bpText ? `已有 ${bpText.length.toLocaleString()} 字` : '选填，不补充也能评审') }}</text></view>
+          <text class="fold-icon" :class="{ open: expandedBP }">+</text>
+        </button>
+        <view v-if="expandedBP" id="field-bpText" class="fold-body">
+          <button class="upload-box" :disabled="uploading || busy" @click="upload"><view class="upload-icon">{{ uploading ? '◌' : '↥' }}</view><view class="upload-copy"><text class="upload-title">{{ uploading ? '正在提取文字…' : filename || '上传 BP 文件' }}</text><text class="upload-description">PDF / PPTX / DOCX / TXT / MD · 10 MB 内</text></view></button>
+          <text v-if="uploadError" class="field-error" role="alert">{{ uploadError }}</text>
+          <text v-if="uploadNotice" class="upload-notice" role="status">{{ uploadNotice }}</text>
+          <textarea v-model="bpText" class="bp-input" :disabled="uploading" placeholder="或直接粘贴：客户、市场、竞争、收入成本、团队、融资用途……" :maxlength="50000" aria-label="补充项目资料，选填，最多50000字" @input="exampleFilled = false" />
+          <text class="bp-count">{{ bpText.length.toLocaleString() }}/50,000</text>
+          <text v-if="fieldErrors.bpText" class="field-error" role="alert">{{ fieldErrors.bpText }}</text>
+        </view>
+
+        <view class="price-card">
+          <view class="price-line"><ReviewOfferStatus :state="offerState" :offer="currentOffer" /><text v-if="billing" class="credit-pill">可用 {{ billing.credits }} 次</text></view>
+          <view v-if="serviceState !== 'error'" class="service-status" :class="{ unavailable: serviceState !== 'ready' }" role="status"><view class="service-dot" /><text>{{ availability }}</text><button v-if="serviceState === 'unavailable'" class="inline-link" :disabled="configLoading" @click="loadConfig">重试</button></view>
+          <button v-else class="inline-link" :disabled="configLoading" @click="loadConfig">{{ configLoading ? '正在重新连接…' : '重新连接 ↻' }}</button>
+          <view v-if="billing?.orders.some(order => order.status === 'pending')" class="pending-payment">有待确认订单。若已扣款，请先查询，勿重复付款。</view>
+          <text v-if="billingError" class="field-error" role="alert">{{ billingError }}</text>
+          <button class="fold-row compact" :aria-expanded="ordersExpanded" @click="ordersExpanded = !ordersExpanded"><text class="fold-sub">费用、订单与退款</text><text class="fold-icon" :class="{ open: ordersExpanded }">+</text></button>
+          <view v-if="ordersExpanded" class="billing-details">
+            <text v-if="paymentsEnabled && !billing" class="billing-rule">尚未查询你的额度；确认时会先查账户，有额度优先使用。</text>
+            <text class="billing-rule">至少一位教练生成报告即计 1 次；全部失败会恢复额度。中途退出不会中断评审。未使用额度退款由人工处理。</text>
+            <button class="inline-link" :disabled="busy || checkingOrders" @click="refreshBilling">{{ checkingOrders ? '正在查询…' : '查询订单与额度 ↻' }}</button>
+            <view v-for="order in billing?.orders.slice(0, 5)" :key="order.id" class="billing-order"><text>{{ orderLabels[order.status] || order.status }} · {{ order.id.slice(-8) }}</text><button class="inline-link" @click="uni.setClipboardData({ data: order.id })">复制订单号</button></view>
+            <template v-if="billing?.supportContact || currentOffer?.supportContact"><button class="inline-link" @click="uni.setClipboardData({ data: billing?.supportContact || currentOffer?.supportContact || '' })">复制客服联系方式</button><text class="billing-support">{{ billing?.supportContact || currentOffer?.supportContact }}</text></template>
+            <text v-else class="billing-support">暂未取得客服联系信息，可在说明页重新获取。</text>
+            <view class="editor-links"><button class="inline-link" @click="uni.navigateTo({ url: aboutPath('orders') })">已扣款没有报告？</button><button class="inline-link" @click="uni.navigateTo({ url: aboutPath('refund') })">计次与退款</button></view>
+          </view>
+        </view>
+        <view v-if="error" class="error-box shake" role="alert">{{ error }}</view>
+        <text v-if="attempted && !submissionResult.success && !recoverableJobId" class="field-error" role="alert">还有内容没填好，已带你回到对应步骤。填写错误不会发起付款。</text>
+        <text class="submit-footnote">{{ recoverableJobId ? '查询的是已有评审，不会创建新订单。' : '通常 30–90 秒出结果，仅供路演练习参考。' }}</text>
+        <button class="demo-link" :disabled="busy || uploading" @click="demo">{{ serviceState === 'ready' ? '不急，先看示例报告 →' : '先免费看一份示例报告 →' }}</button>
+      </template>
     </view>
 
-    <view class="submission-section">
-      <view class="billing-card">
-        <view class="delivery-heading">本次会得到什么</view>
-        <view class="delivery-list"><text>八个维度的项目分析与证据缺口</text><text>风险、模拟追问与优先改进清单</text><text>向三位专项AI教练发起请求，按实际完成展示</text></view>
-        <view class="billing-heading"><ReviewOfferStatus :state="offerState" :offer="currentOffer" /><text v-if="billing" class="credit-pill">可用 {{ billing.credits }} 次</text></view>
-        <text v-if="paymentsEnabled && !billing" class="billing-rule">尚未查询本人的额度；确认时先查账户，有额度优先使用。</text>
-        <text class="billing-rule">至少一位教练生成报告即计1次；全部失败恢复本次额度。暂时退出不会中断评审，未使用额度会保留。未使用额度退款由人工处理。</text>
-        <view v-if="billing?.orders.some(order => order.status === 'pending')" class="pending-payment">有待确认订单。若已扣款，请先查询额度，勿重复付款。</view>
-        <button class="billing-query" :disabled="busy || checkingOrders" @click="refreshBilling">{{ checkingOrders ? '正在查询订单与额度…' : '查询订单与额度 ↻' }}</button>
-        <text v-if="billingError" class="field-error" role="alert">{{ billingError }}</text>
-        <button v-if="billing?.supportContact || currentOffer?.supportContact" class="billing-query" @click="uni.setClipboardData({ data: billing?.supportContact || currentOffer?.supportContact || '' })">复制客服联系信息</button><text v-if="billing?.supportContact || currentOffer?.supportContact" class="billing-support">{{ billing?.supportContact || currentOffer?.supportContact }}</text><text v-else class="billing-support">暂未取得客服联系信息，可在说明页重新获取。</text>
-        <button v-if="billing?.orders.length" class="orders-toggle" :aria-expanded="ordersExpanded" @click="ordersExpanded = !ordersExpanded">{{ ordersExpanded ? '收起' : '查看' }}最近订单 {{ ordersExpanded ? '−' : '+' }}</button>
-        <view v-if="ordersExpanded"><view v-for="order in billing?.orders.slice(0, 5)" :key="order.id" class="billing-order"><text>{{ orderLabels[order.status] || order.status }} · {{ order.id.slice(-8) }}</text><button class="order-copy" @click="uni.setClipboardData({ data: order.id })">复制订单号</button></view></view>
-        <view class="checkout-faq"><button @click="uni.navigateTo({ url: aboutPath('orders') })">已扣款但没有报告？ →</button><button @click="uni.navigateTo({ url: aboutPath('refund') })">计次与退款说明 →</button></view>
-      </view>
-      <view v-if="error" class="error-box" role="alert">{{ error }}</view>
-      <text v-if="attempted && !submissionResult.success && !recoverableJobId" class="field-error form-errors" role="alert">请完善上方标注的项目资料与授权。填写错误不会发起付款。</text>
-      <button class="primary lime submit-button" :disabled="busy || uploading || confirmingExample || checkingOrders || (!recoverableJobId && configLoading) || (!recoverableJobId && serviceState !== 'ready')" @click="submit"><text>{{ confirmingExample ? '请确认示例资料用途…' : paymentLabel }}</text><text>↗</text></button>
-      <text class="submit-footnote">{{ recoverableJobId ? '查询的是已有评审，不会创建新的付费订单。' : '真实 AI 评审通常需要 30–90 秒，结果仅供路演练习参考。' }}</text>
-      <button class="demo-link" :disabled="busy || uploading" @click="demo">免费查看示例报告 →</button>
+    <view class="action-bar">
+      <button v-if="step > 0" class="action-back" aria-label="上一步" @click="back">←</button>
+      <button v-if="currentStep !== 'confirm'" class="primary action-next" @click="next">{{ currentStep === 'panel' && !panelReady ? `再选 ${PANEL_SIZE - preferences.length} 位教练` : '下一步' }}</button>
+      <button v-else class="primary lime action-next" :disabled="busy || uploading || confirmingExample || checkingOrders || (!recoverableJobId && configLoading) || (!recoverableJobId && serviceState !== 'ready')" @click="submit"><text>{{ confirmingExample ? '请确认示例用途…' : paymentLabel }}</text><text>↗</text></button>
     </view>
-    <BottomNav active="pitch" />
 
     <view v-if="busy" class="loading-overlay" role="dialog" aria-modal="true" aria-label="评审进行中">
-      <view class="loading-card"><view class="loading-orb">✳</view><text class="eyebrow">AI投了么 · 真实评审</text><view class="loading-title">{{ busyTitle }}</view><text class="loading-description" role="status">{{ busyDescription }}</text>
-        <view v-if="phase === 'reviewing'"><view v-if="!resumingJob" class="loading-people"><InvestorAvatar v-for="person in panel" :key="person.id" :investor="person" /></view><view class="progress-track"><view class="progress-fill" :style="{ width: `${(completed / PANEL_SIZE) * 100}%` }" /></view><text class="loading-footnote">通常需要 30–90 秒，完成后自动打开报告。</text></view>
-        <text v-else class="loading-footnote">{{ phase === 'starting' ? '正在确认提交结果，请留在本页，避免重复提交。' : paymentsEnabled ? '先确认已有订单与额度，再开始真实评审。' : '正在检查评审服务，请稍候。' }}</text>
-        <button class="secondary pause-button" :disabled="cancelling || phase === 'starting'" @click="pause">{{ phase === 'starting' ? '正在确认提交，请稍候…' : pendingJobId ? '返回填写页，评审继续' : '暂时返回填写页' }}</button>
-        <button v-if="pendingJobId && !paymentsEnabled && !resumingJob" class="cancel-button" :disabled="cancelling" @click="cancel">{{ cancelling ? '正在确认取消…' : '取消本次评审' }}</button>
+      <view class="loading-card">
+        <view class="orbit" :class="{ live: phase === 'reviewing' }">
+          <view class="orbit-ring" /><view class="orbit-ring delay" />
+          <view class="orbit-core">✳</view>
+        </view>
+        <view class="loading-title">{{ busyTitle }}</view>
+        <text class="loading-description" role="status">{{ busyDescription }}</text>
+        <view v-if="phase === 'reviewing'">
+          <view v-if="!resumingJob" class="loading-people">
+            <view v-for="(person, index) in panel" :key="person.id" class="loading-person" :class="{ done: index < completed }" :style="{ animationDelay: `${index * 0.4}s` }"><InvestorAvatar :investor="person" small /><text class="loading-person-state">{{ index < completed ? '✓' : '' }}</text></view>
+          </view>
+          <view class="progress-track"><view class="progress-fill" :style="{ width: `${Math.max(6, (completed / PANEL_SIZE) * 100)}%` }" /></view>
+          <view class="tip-line"><text :key="tipIndex" class="tip-text">{{ WAIT_TIPS[tipIndex] }}…</text></view>
+        </view>
+        <text v-else class="loading-footnote">{{ phase === 'starting' ? '正在确认提交结果，请留在本页。' : paymentsEnabled ? '先确认已有订单与额度，再开始评审。' : '正在检查评审服务。' }}</text>
+        <button class="secondary pause-button" :disabled="cancelling || phase === 'starting'" @click="pause">{{ phase === 'starting' ? '正在确认提交…' : pendingJobId ? '先回去，评审在后台继续' : '暂时返回' }}</button>
+        <button v-if="pendingJobId && !paymentsEnabled && !resumingJob" class="cancel-button" :disabled="cancelling" @click="cancel">{{ cancelling ? '正在取消…' : '取消本次评审' }}</button>
       </view>
     </view>
   </view>
 </template>
 
 <style scoped>
-.pitch-page .pitch-heading { margin: 5px 0 22px; }
-.pitch-page .pitch-heading .eyebrow { color: #2f684e; letter-spacing: 1px; font-size: 12px; }
-.pitch-page .pitch-title { font-size: 27px; line-height: 1.4; font-weight: 800; letter-spacing: -.6px; margin: 11px 0 12px; }
-.pitch-page .pitch-heading .caption { font-size: 13px; color: #647068; }
-.pitch-page .sample-card { display: flex; align-items: center; gap: 12px; padding: 15px; background: #eaf0de; border: 1px solid #dbe5c9; border-radius: 15px; }
-.pitch-page .sample-card > view { flex: 1; min-width: 0; }
-.pitch-page .sample-title { display: block; font-size: 14px; font-weight: 700; }
-.pitch-page .sample-caption { display: block; margin-top: 5px; color: #5c6d55; font-size: 12px; line-height: 1.7; }
-.pitch-page .sample-button { min-height: 44px; flex-shrink: 0; padding: 11px 0 11px 6px; color: #2f684e; font-size: 13px; font-weight: 700; }
-.pitch-page .service-status { display: flex; gap: 7px; align-items: center; min-height: 44px; margin-top: 9px; color: #4c6955; font-size: 12px; line-height: 1.7; }
-.pitch-page .service-status.unavailable { color: #786843; }
-.pitch-page .service-status > text { flex: 1; }
-.pitch-page .service-dot { width: 6px; height: 6px; flex-shrink: 0; border-radius: 50%; background: #2f684e; }
-.pitch-page .unavailable .service-dot { background: #a18c59; }
-.pitch-page .reconnect-button { min-height: 44px; padding: 10px 0 10px 8px; font-size: 12px; color: #2f684e; flex-shrink: 0; }
-.pitch-page .form-notice { margin: 12px 0; font-size: 13px; }
-.pitch-page .draft-card { padding: 13px 15px; border: 1px solid #d9e2cd; border-radius: 13px; background: #f0f4e7; margin: 14px 0; }
-.pitch-page .draft-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; font-weight: 700; color: #3f5b3f; }
-.pitch-page .draft-reset { flex-shrink: 0; min-height: 44px; padding: 10px 0 10px 6px; color: #2f684e; font-size: 12px; font-weight: 500; }
-.pitch-page .draft-card > text { display: block; font-size: 12px; color: #647358; line-height: 1.8; }
-.pitch-page .recovery-card { padding: 18px; border: 1px solid #b5c797; border-radius: 16px; background: #edf3e3; margin: 15px 0; }
-.pitch-page .recovery-title { font-size: 16px; font-weight: 700; }
-.pitch-page .recovery-card > text { display: block; font-size: 13px; color: #56694d; margin: 7px 0 13px; line-height: 1.8; }
-.pitch-page .recovery-card .secondary { color: #2f684e; background: white; }
-.pitch-page .form-section { padding: 26px 0 4px; border-top: 1px solid #e0e5d8; margin-top: 20px; }
-.pitch-page .form-section-heading { display: flex; align-items: flex-start; gap: 11px; margin-bottom: 22px; }
-.pitch-page .section-number { display: flex; align-items: center; justify-content: center; width: 29px; height: 29px; border-radius: 9px; background: #e5ebd8; color: #2f684e; font-size: 12px; font-weight: 700; flex-shrink: 0; margin-top: 2px; }
-.pitch-page .form-section-title { font-size: 18px; font-weight: 750; }
-.pitch-page .section-description { display: block; font-size: 12px; line-height: 1.8; color: #697466; margin-top: 3px; }
-.pitch-page .field-group { margin-bottom: 23px; scroll-margin-top: 24px; }
-.pitch-page .field-label { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; margin-bottom: 10px; }
-.pitch-page .field-counter, .pitch-page .field-hint { color: #6d7867; font-weight: 400; font-size: 12px; }
-.pitch-page .required-label { display: inline; font-size: 12px; color: #64765a; font-weight: 400; margin-left: 5px; }
-.pitch-page .text-input, .pitch-page .stage-picker { background: white; border: 1px solid #d6decd; padding: 14px; border-radius: 12px; height: 52px; font-size: 14px; }
-.pitch-page .text-input { width: 100%; }
-.pitch-page .stage-picker { display: flex; align-items: center; justify-content: space-between; }
-.pitch-page .stage-picker .muted { font-size: 12px; }
-.pitch-page .description-guide { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
-.pitch-page .description-guide text { font-size: 12px; color: #627456; background: #edf1e5; padding: 4px 7px; border-radius: 6px; }
-.pitch-page .description-input, .pitch-page .bp-input { width: 100%; height: 180px; font-size: 14px; line-height: 1.9; padding: 14px; background: white; border: 1px solid #d6decd; border-radius: 12px; }
-.pitch-page .bp-input { margin-top: 10px; height: 220px; }
-.pitch-page .invalid { border-color: #bc684a; background: #fffaf6; }
-.pitch-page .input-footer { display: flex; align-items: start; justify-content: space-between; gap: 10px; margin-top: 8px; color: #737d69; font-size: 12px; }
-.pitch-page .input-footer > text:last-child { flex-shrink: 0; }
-.pitch-page .counter-short { color: #966135; }
-.pitch-page .field-error { display: block; margin-top: 8px; color: #a24c30; font-size: 13px; line-height: 1.8; }
-.pitch-page .text-link { font-size: 12px; font-weight: 500; color: #2f684e; min-height: 44px; padding: 10px 0 10px 8px; text-align: right; }
-.pitch-page .example-notice { background: #fff1dc; border-radius: 11px; padding: 12px; color: #855e2d; font-size: 12px; line-height: 1.8; margin-bottom: 17px; }
-.pitch-page .example-notice .text-link { padding: 9px 0 0; text-align: left; }
-.pitch-page .industry-choices { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; }
-.pitch-page .industry-choice { border: 1px solid #d9e0d0; border-radius: 10px; min-height: 46px; padding: 10px 2px; background: #fcfcf8; font-size: 12px; color: #5e6c55; }
-.pitch-page .industry-choice.selected, .pitch-page .round-choice.selected { background: #e4edcf; border-color: #799858; color: #304d2c; font-weight: 700; }
-.pitch-page .round-choices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
-.pitch-page .round-choice { min-height: 46px; padding: 11px 3px; background: #fcfcf8; border: 1px solid #d9e0d0; border-radius: 10px; color: #5e6c55; font-size: 12px; }
-.pitch-page .round-focus { display: flex; flex-direction: column; gap: 4px; padding: 12px; margin-top: 10px; border-radius: 10px; background: #edf2e4; font-size: 13px; color: #536b46; line-height: 1.8; }
-.pitch-page .round-focus-label { font-size: 12px; color: #6c7e5e; }
-.pitch-page .tone-options { display: flex; gap: 10px; }
-.pitch-page .tone-card { flex: 1; border: 1px solid #d9e0d0; border-radius: 12px; padding: 13px 11px; background: #fcfcf8; text-align: left; }
-.pitch-page .tone-card.selected { background: #e7eed9; border-color: #799858; }
-.pitch-page .tone-top { display: flex; align-items: center; justify-content: space-between; gap: 5px; font-size: 14px; font-weight: 700; }
-.pitch-page .radio-dot { border: 1px solid #bcc9aa; width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; }
-.pitch-page .selected .radio-dot { border: 4px solid #2f684e; background: white; }
-.pitch-page .tone-description { display: block; font-size: 12px; line-height: 1.8; color: #65765a; margin-top: 7px; }
-.pitch-page .assigned-panel { padding: 16px; border-radius: 15px; background: #edf1e5; margin: 8px 0 18px; }
-.pitch-page .assigned-label { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: #607153; margin-bottom: 12px; }
-.pitch-page .assigned-label > text:first-child { color: #354e35; font-weight: 700; }
-.pitch-page .panel-people { display: flex; flex-direction: column; gap: 14px; }
-.pitch-page .panel-person { display: flex; align-items: center; gap: 11px; }
-.pitch-page .panel-person-copy { flex: 1; min-width: 0; }
-.pitch-page .panel-name { display: block; font-size: 14px; font-weight: 700; }
-.pitch-page .panel-title { display: block; color: #66785a; font-size: 12px; line-height: 1.8; margin-top: 2px; }
-.pitch-page .panel-type { font-size: 12px; color: #65765b; border: 1px solid #ced9bc; border-radius: 5px; padding: 2px 5px; flex-shrink: 0; }
-.pitch-page .panel-customize { display: flex; justify-content: space-between; align-items: center; gap: 8px; width: 100%; min-height: 48px; font-size: 12px; color: #2f684e; margin-top: 15px; padding-top: 10px; border-top: 1px solid #d6dfca; text-align: left; }
-.pitch-page .panel-customize > text:last-child { flex-shrink: 0; }
-.pitch-page .preference-editor { padding-top: 10px; }
-.pitch-page .preference-editor .caption { font-size: 12px; color: #637258; }
-.pitch-page .preference-choices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-top: 10px; }
-.pitch-page .preference-choices button { padding: 11px 2px; min-height: 44px; font-size: 12px; color: #5b6c50; border: 1px solid #cdd8bc; border-radius: 8px; background: #f9fbf4; }
-.pitch-page .preference-choices button.selected { background: #dce8c3; color: #304d2c; border-color: #799858; font-weight: 700; }
-.pitch-page .preference-hint { display: block; margin-top: 10px; font-size: 12px; line-height: 1.8; color: #9a6030; }
-.pitch-page .restore-panel, .pitch-page .panel-directory { min-height: 44px; padding: 11px 0; font-size: 12px; color: #2f684e; text-align: left; }
-.pitch-page .panel-directory { margin-top: 3px; }
-.pitch-page .consent-card { background: white; border: 1px solid #dce3d3; border-radius: 12px; padding: 14px; margin-bottom: 20px; scroll-margin-top: 24px; }
-.pitch-page .consent-card.invalid { border-color: #bc684a; }
-.pitch-page .consent-row { display: flex; align-items: flex-start; gap: 10px; text-align: left; font-size: 13px; line-height: 1.9; color: #59664e; width: 100%; min-height: 44px; }
-.pitch-page .checkbox { display: flex; justify-content: center; align-items: center; width: 20px; height: 20px; border: 1px solid #a5b78f; border-radius: 5px; flex-shrink: 0; margin-top: 2px; font-size: 13px; }
-.pitch-page .checkbox.checked { background: #2f684e; color: white; border-color: #2f684e; }
-.pitch-page .privacy-link { color: #2f684e; font-size: 12px; min-height: 44px; padding: 12px 0 6px 30px; text-align: left; }
-.pitch-page .upload-box { display: flex; align-items: center; gap: 10px; border: 1px dashed #a9bc8c; border-radius: 12px; background: #f0f4e7; padding: 17px 12px; width: 100%; text-align: left; }
-.pitch-page .upload-icon { font-size: 27px; color: #6e8b51; flex-shrink: 0; }
-.pitch-page .upload-copy { flex: 1; min-width: 0; }
-.pitch-page .upload-title { display: block; font-size: 13px; font-weight: 700; overflow-wrap: anywhere; word-break: break-all; }
-.pitch-page .upload-description { display: block; color: #657559; font-size: 12px; line-height: 1.9; margin-top: 4px; }
-.pitch-page .upload-plus { flex-shrink: 0; font-size: 21px; color: #738b58; }
-.pitch-page .upload-help { display: block; margin-top: 9px; color: #737c69; font-size: 12px; line-height: 1.8; }
-.pitch-page .upload-notice { display: block; margin-top: 9px; font-size: 12px; line-height: 1.8; color: #506d40; }
-.pitch-page .paste-toggle { display: flex; align-items: center; width: 100%; justify-content: space-between; min-height: 46px; padding: 12px 0; font-size: 13px; color: #2f684e; }
-.pitch-page .bp-count { display: block; text-align: right; margin-top: 7px; font-size: 12px; color: #6d7c60; }
-.pitch-page .submission-section { padding-top: 4px; }
-.pitch-page .billing-card { margin: 4px 0 20px; padding: 18px; background: #e9efdc; border: 1px solid #d8e3c5; border-radius: 15px; }
-.pitch-page .billing-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.pitch-page .billing-eyebrow { font-size: 12px; color: #617851; }
-.pitch-page .billing-price { font-size: 28px; font-weight: 800; color: #294834; margin-top: 3px; }
-.pitch-page .billing-price > text { font-size: 12px; font-weight: 400; color: #6c7a5d; }
-.pitch-page .credit-pill { font-size: 12px; padding: 5px 9px; border-radius: 20px; color: #2f684e; background: #fffefa; }
-.pitch-page .billing-rule { display: block; margin-top: 12px; color: #596f4b; font-size: 12px; line-height: 1.9; }
-.pitch-page .pending-payment { color: #895d2b; background: #fff5df; border-radius: 8px; padding: 10px; margin-top: 12px; font-size: 12px; line-height: 1.8; }
-.pitch-page .billing-query { color: #2f684e; font-size: 13px; font-weight: 600; min-height: 44px; padding: 12px 0 7px; text-align: left; }
-.pitch-page .billing-support { display: block; font-size: 12px; color: #627454; line-height: 1.8; overflow-wrap: anywhere; }
-.pitch-page .orders-toggle { font-size: 12px; color: #49623e; width: 100%; min-height: 44px; padding: 10px 0 0; text-align: left; }
-.pitch-page .billing-order { display: flex; align-items: center; justify-content: space-between; gap: 5px; border-top: 1px solid #d4dfc3; font-size: 12px; color: #5d6c50; }
-.pitch-page .order-copy { min-height: 44px; padding: 11px 0 11px 8px; color: #2f684e; font-size: 12px; }
-.pitch-page .form-errors { margin-bottom: 13px; }
-.pitch-page .submit-button { font-size: 15px; }
-.pitch-page .submit-footnote { display: block; text-align: center; margin-top: 12px; color: #6b7662; font-size: 12px; line-height: 1.8; }
-.pitch-page .demo-link { display: block; margin: 10px auto 0; min-height: 46px; font-size: 13px; color: #2f684e; padding: 12px 0; }
-.pitch-page .loading-overlay { position: fixed; inset: 0; background: #18281fba; display: flex; align-items: center; justify-content: center; padding: 24px; z-index: 99; }
-.pitch-page .loading-card { width: 100%; max-width: 360px; max-height: 88vh; overflow-y: auto; background: #f7f8f0; border-radius: 23px; padding: 27px 22px 17px; text-align: center; }
-.pitch-page .loading-orb { font-size: 52px; color: #6f934b; margin-bottom: 12px; animation: rotate 7s linear infinite; }
-.pitch-page .loading-card .eyebrow { color: #68785b; font-size: 12px; letter-spacing: 1px; }
-.pitch-page .loading-title { font-size: 22px; line-height: 1.5; font-weight: 800; margin: 12px 0; }
-.pitch-page .loading-description { display: block; font-size: 13px; line-height: 1.9; color: #596a50; }
-.pitch-page .loading-people { display: flex; justify-content: center; gap: 12px; margin: 23px 0; }
-.pitch-page .progress-track { height: 6px; background: #dfe7d1; border-radius: 3px; overflow: hidden; }
-.pitch-page .progress-fill { height: 6px; background: #70954b; transition: width .5s; }
-.pitch-page .loading-footnote { display: block; color: #6c795e; font-size: 12px; line-height: 1.8; margin-top: 15px; }
-.pitch-page .pause-button { margin-top: 22px; font-size: 13px; color: #2f684e; background: white; border-color: #cdd9bb; }
-.pitch-page .cancel-button { font-size: 12px; color: #7d6349; margin-top: 5px; min-height: 44px; padding: 12px; }
-@keyframes rotate { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .pitch-page .loading-orb { animation: none; } .pitch-page .progress-fill { transition: none; } }
-@media (max-width: 360px) { .pitch-page .pitch-title { font-size: 27px; } .pitch-page .industry-choices { grid-template-columns: repeat(3, 1fr); } .pitch-page .field-hint { font-size: 12px; } .pitch-page .tone-description { font-size: 12px; } }
-.pitch-page .settings-summary { text-align: left; width: 100%; min-height: 110px; padding: 16px; border: 1px solid #dfe5d7; border-radius: 16px; background: #edf1e5; }
-.pitch-page .settings-summary text { display: block; font-size: 12px; color: #626d64; line-height: 1.75; margin-top: 6px; }
-.pitch-page .settings-summary .settings-edit { color: #2f684e; padding: 8px 0 0; }
-.pitch-page .settings-expanded { margin-top: 24px; }
-.pitch-page .delivery-heading { font-size: 18px; font-weight: 750; }
-.pitch-page .delivery-list { margin: 12px 0 20px; border-bottom: 1px solid #d3ddc4; padding-bottom: 16px; }
-.pitch-page .delivery-list text { display: block; font-size: 13px; line-height: 1.85; margin-top: 6px; }
-.pitch-page .delivery-list text::before { content: '✓ '; color: #2f684e; }
-.pitch-page .checkout-faq { border-top: 1px solid #d3ddc4; margin-top: 14px; }
-.pitch-page .checkout-faq button { display: block; min-height: 44px; width: 100%; text-align: left; color: #2f684e; font-size: 12px; padding: 10px 0; }
+.pitch-page { padding-bottom: calc(108px + env(safe-area-inset-bottom)); }
+/* progress */
+.wizard-progress { display: flex; align-items: center; gap: 12px; margin: 2px 0 18px; }
+.wizard-track { flex: 1; height: 6px; border-radius: 3px; background: #e2e8d8; overflow: hidden; }
+.wizard-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, #2f684e, #8fbf5a); transition: width .45s cubic-bezier(.2,.8,.2,1); }
+.wizard-count { font-size: 12px; color: #6b7867; font-variant-numeric: tabular-nums; }
+/* step pane transitions */
+.step-pane { animation: step-in-forward .38s cubic-bezier(.2,.8,.2,1) both; }
+.step-pane.back { animation-name: step-in-back; }
+@keyframes step-in-forward { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: none; } }
+@keyframes step-in-back { from { opacity: 0; transform: translateX(-28px); } to { opacity: 1; transform: none; } }
+.step-eyebrow { display: block; font-size: 12px; font-weight: 700; color: #2f684e; letter-spacing: 1px; }
+.step-title { font-size: 26px; line-height: 1.35; font-weight: 800; letter-spacing: -.5px; margin: 8px 0 8px; }
+.step-sub { display: block; font-size: 13px; color: #66725f; line-height: 1.8; margin-bottom: 18px; }
+/* inputs */
+.big-input { width: 100%; height: 60px; margin-top: 14px; padding: 0 16px; font-size: 19px; font-weight: 700; background: #fff; border: 1.5px solid #d6decd; border-radius: 16px; transition: border-color .2s, box-shadow .2s; }
+.big-input:focus, .big-textarea:focus { border-color: #2f684e; box-shadow: 0 0 0 4px #2f684e1a; }
+.big-textarea { width: 100%; height: 210px; padding: 14px 16px; font-size: 15px; line-height: 1.9; background: #fff; border: 1.5px solid #d6decd; border-radius: 16px; transition: border-color .2s, box-shadow .2s; }
+.invalid { border-color: #bc684a !important; background: #fffaf6 !important; }
+.input-meta { display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; color: #737d69; }
+.field-error { display: block; margin-top: 10px; color: #a24c30; font-size: 13px; line-height: 1.8; }
+.shake { animation: shake .36s ease; }
+@keyframes shake { 20%, 60% { transform: translateX(-5px); } 40%, 80% { transform: translateX(5px); } }
+.draft-line { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; padding: 4px 14px; border-radius: 12px; background: #eef3e4; font-size: 13px; color: #4e6545; }
+.inline-link { min-height: 44px; padding: 10px 0; color: #2f684e; font-size: 13px; font-weight: 600; text-align: left; }
+.shortcut-cards { display: flex; flex-direction: column; gap: 10px; margin-top: 30px; }
+.shortcut-card { display: flex; align-items: center; gap: 14px; width: 100%; padding: 15px 16px; text-align: left; background: #fff; border: 1px solid #e0e6d6; border-radius: 16px; transition: transform .15s, background .15s; }
+.shortcut-card:active { transform: scale(.98); background: #f2f6ea; }
+.shortcut-icon { width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; border-radius: 12px; background: #e8f0d6; color: #2f684e; font-size: 18px; flex-shrink: 0; }
+.shortcut-title { display: block; font-size: 14px; font-weight: 700; }
+.shortcut-sub { display: block; font-size: 12px; color: #6a7664; margin-top: 2px; line-height: 1.6; }
+/* description helpers */
+.prompt-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.prompt-chip { min-height: 36px; padding: 6px 12px; border-radius: 18px; font-size: 13px; color: #2f684e; background: #edf3e2; border: 1px solid #d4e1c0; transition: transform .15s, background .2s; }
+.prompt-chip:active { transform: scale(.94); }
+.prompt-chip.used { background: #2f684e; color: #fff; border-color: #2f684e; }
+.length-meter { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 12px; color: #966135; }
+.length-meter .ok { color: #2f684e; font-weight: 700; }
+.length-track { flex: 1; height: 4px; border-radius: 2px; background: #e6eadf; overflow: hidden; }
+.length-fill { height: 100%; background: #d6a15f; transition: width .3s ease, background .3s; }
+.length-fill.done { background: #4f8a55; }
+.example-notice { margin-top: 14px; background: #fff1dc; border-radius: 11px; padding: 10px 12px; color: #855e2d; font-size: 12px; }
+/* choice cards */
+.choice-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.choice-card, .choice-row { position: relative; text-align: left; background: #fff; border: 1.5px solid #e0e6d6; border-radius: 16px; animation: rise .4s cubic-bezier(.2,.8,.2,1) both; transition: transform .16s ease, border-color .2s, background .2s, box-shadow .2s; }
+.choice-card { padding: 14px 14px 13px; min-height: 104px; }
+.choice-card:active, .choice-row:active { transform: scale(.97); }
+.choice-card.selected, .choice-row.selected { border-color: #2f684e; background: #f0f6e6; box-shadow: 0 6px 18px #2f684e1f; }
+.choice-icon { display: block; font-size: 20px; color: #2f684e; }
+.choice-name { display: block; font-size: 15px; font-weight: 750; margin-top: 4px; }
+.choice-sub { display: block; font-size: 12px; color: #6a7664; line-height: 1.6; margin-top: 3px; }
+.choice-check { position: absolute; top: 10px; right: 10px; width: 22px; height: 22px; border-radius: 50%; background: #2f684e; color: #fff; font-size: 12px; display: flex; align-items: center; justify-content: center; opacity: 0; transform: scale(.4); transition: opacity .2s, transform .25s cubic-bezier(.3,1.6,.5,1); }
+.selected .choice-check { opacity: 1; transform: scale(1); }
+.choice-list { display: flex; flex-direction: column; gap: 10px; }
+.choice-row { display: flex; align-items: center; width: 100%; min-height: 64px; padding: 12px 46px 12px 16px; }
+.choice-row .choice-name { margin-top: 0; }
+.choice-row .choice-check { top: 50%; margin-top: -11px; right: 14px; }
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+/* tone + panel */
+.tone-options { display: flex; gap: 10px; margin: 12px 0 24px; }
+.tone-card { flex: 1; border: 1.5px solid #e0e6d6; border-radius: 16px; padding: 14px 12px; background: #fff; text-align: left; transition: border-color .2s, background .2s, transform .15s; }
+.tone-card:active { transform: scale(.97); }
+.tone-card.selected { background: #f0f6e6; border-color: #2f684e; }
+.tone-top { display: flex; align-items: center; justify-content: space-between; font-size: 15px; font-weight: 750; }
+.radio-dot { border: 1.5px solid #bcc9aa; width: 16px; height: 16px; border-radius: 50%; transition: border-width .2s; }
+.selected .radio-dot { border: 5px solid #2f684e; background: #fff; }
+.tone-description { display: block; font-size: 12px; color: #65765a; margin-top: 6px; line-height: 1.7; }
+.panel-heading { display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: 700; color: #354e35; margin-bottom: 12px; }
+.panel-tag { font-size: 11px; font-weight: 500; color: #65765b; border: 1px solid #ced9bc; border-radius: 6px; padding: 1px 6px; }
+.panel-people { display: flex; flex-direction: column; gap: 10px; }
+.panel-person { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: #fff; border: 1px solid #e3e8da; border-radius: 14px; animation: rise .45s cubic-bezier(.2,.8,.2,1) both; }
+.panel-person-copy { flex: 1; min-width: 0; }
+.panel-name { display: block; font-size: 14px; font-weight: 700; }
+.panel-title { display: block; color: #66785a; font-size: 12px; line-height: 1.6; }
+.panel-toggle { margin-top: 6px; }
+.preference-editor { padding: 4px 0 6px; animation: rise .3s ease both; }
+.preference-editor .caption { font-size: 12px; color: #637258; }
+.preference-choices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+.preference-choices button { min-height: 44px; padding: 10px 2px; font-size: 13px; color: #5b6c50; border: 1.5px solid #dbe3cd; border-radius: 12px; background: #fff; transition: all .2s; }
+.preference-choices button.selected { background: #2f684e; color: #fff; border-color: #2f684e; font-weight: 700; }
+.preference-hint { display: block; margin-top: 10px; font-size: 12px; color: #9a6030; }
+.editor-links { display: flex; flex-wrap: wrap; gap: 0 20px; }
+/* confirm */
+.summary-card { background: #fff; border: 1px solid #e0e6d6; border-radius: 18px; padding: 4px 16px; margin: 14px 0 16px; }
+.summary-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 54px; text-align: left; border-bottom: 1px solid #eef1e8; }
+.summary-row:last-child { border-bottom: 0; }
+.summary-label { width: 34px; flex-shrink: 0; font-size: 12px; color: #7b8676; }
+.summary-value { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.summary-edit { font-size: 12px; color: #2f684e; flex-shrink: 0; }
+.consent-toggle { display: flex; align-items: center; gap: 12px; width: 100%; padding: 14px 16px; text-align: left; font-size: 13px; line-height: 1.7; color: #3f4d3a; background: #fff; border: 1.5px solid #e0e6d6; border-radius: 16px; transition: border-color .2s, background .2s; }
+.consent-toggle.checked { border-color: #2f684e; background: #f0f6e6; }
+.switch { position: relative; width: 44px; height: 26px; flex-shrink: 0; border-radius: 13px; background: #cfd6c6; transition: background .25s; }
+.switch-knob { position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px #0003; transition: transform .28s cubic-bezier(.3,1.4,.5,1); }
+.checked .switch { background: #2f684e; }
+.checked .switch-knob { transform: translateX(18px); }
+.consent-links { display: flex; gap: 20px; padding-left: 4px; }
+.consent-links .inline-link { font-size: 12px; font-weight: 500; }
+.fold-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 56px; padding: 10px 0; text-align: left; border-top: 1px solid #e3e8da; margin-top: 8px; }
+.fold-row.compact { min-height: 44px; margin-top: 4px; padding: 6px 0 0; }
+.fold-title { display: block; font-size: 14px; font-weight: 700; }
+.fold-sub { display: block; font-size: 12px; color: #6a7664; }
+.fold-icon { font-size: 20px; color: #2f684e; transition: transform .25s ease; }
+.fold-icon.open { transform: rotate(45deg); }
+.fold-body, .billing-details { animation: rise .3s ease both; }
+.upload-box { display: flex; align-items: center; gap: 12px; width: 100%; padding: 14px; text-align: left; border: 1.5px dashed #a9bc8c; border-radius: 14px; background: #f3f7ea; }
+.upload-icon { font-size: 24px; color: #6e8b51; }
+.upload-copy { flex: 1; min-width: 0; }
+.upload-title { display: block; font-size: 13px; font-weight: 700; word-break: break-all; }
+.upload-description { display: block; color: #657559; font-size: 12px; }
+.upload-notice { display: block; margin-top: 8px; font-size: 12px; color: #506d40; }
+.bp-input { width: 100%; height: 160px; margin-top: 10px; padding: 12px 14px; font-size: 14px; line-height: 1.8; background: #fff; border: 1.5px solid #d6decd; border-radius: 14px; }
+.bp-count { display: block; text-align: right; margin-top: 6px; font-size: 12px; color: #6d7c60; }
+.price-card { margin-top: 16px; padding: 14px 16px; background: #edf2e3; border-radius: 16px; }
+.price-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.credit-pill { font-size: 12px; padding: 4px 10px; border-radius: 20px; color: #2f684e; background: #fff; }
+.service-status { display: flex; gap: 8px; align-items: center; min-height: 36px; color: #4c6955; font-size: 12px; }
+.service-status > text { flex: 1; }
+.service-status.unavailable { color: #786843; }
+.service-dot { width: 7px; height: 7px; border-radius: 50%; background: #2f684e; flex-shrink: 0; animation: pulse-dot 2s ease-in-out infinite; }
+.unavailable .service-dot { background: #a18c59; animation: none; }
+@keyframes pulse-dot { 50% { box-shadow: 0 0 0 5px #2f684e22; } }
+.pending-payment { color: #895d2b; background: #fff5df; border-radius: 8px; padding: 10px; margin-top: 6px; font-size: 12px; }
+.billing-rule { display: block; margin-top: 8px; color: #596f4b; font-size: 12px; line-height: 1.8; }
+.billing-order { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #d4dfc3; font-size: 12px; color: #5d6c50; }
+.billing-support { display: block; font-size: 12px; color: #627454; overflow-wrap: anywhere; }
+.recovery-card { padding: 16px; border: 1px solid #b5c797; border-radius: 16px; background: #edf3e3; margin-bottom: 16px; animation: rise .4s ease both; }
+.recovery-title { font-size: 16px; font-weight: 750; }
+.recovery-card > text { display: block; font-size: 13px; color: #56694d; margin: 4px 0 12px; }
+.form-notice { margin-bottom: 14px; font-size: 13px; animation: rise .3s ease both; }
+.submit-footnote { display: block; text-align: center; margin-top: 14px; color: #6b7662; font-size: 12px; }
+.demo-link { display: block; margin: 2px auto 0; min-height: 44px; padding: 10px 0; font-size: 13px; color: #2f684e; }
+/* sticky action bar */
+.action-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; max-width: 560px; margin: 0 auto; display: flex; gap: 10px; padding: 12px 24px calc(12px + env(safe-area-inset-bottom)); background: linear-gradient(180deg, #f7f7f000, #f7f7f0 30%); }
+.action-back { width: 54px; height: 54px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 20px; border-radius: 16px; background: #fff; border: 1px solid #dfe5d7; transition: transform .15s; }
+.action-back:active { transform: scale(.94); }
+.action-next { flex: 1; border-radius: 16px !important; }
+/* waiting overlay */
+.loading-overlay { position: fixed; inset: 0; z-index: 99; display: flex; align-items: center; justify-content: center; padding: 24px; background: #18281fcc; animation: fade .3s ease both; }
+@keyframes fade { from { opacity: 0; } }
+.loading-card { width: 100%; max-width: 360px; max-height: 88vh; overflow-y: auto; background: #f7f8f0; border-radius: 26px; padding: 26px 22px 16px; text-align: center; animation: pop .45s cubic-bezier(.2,1.3,.4,1) both; }
+@keyframes pop { from { opacity: 0; transform: scale(.92) translateY(12px); } }
+.orbit { position: relative; width: 92px; height: 92px; margin: 0 auto 14px; }
+.orbit-ring { position: absolute; inset: 0; border-radius: 50%; border: 2px solid #8fbf5a; opacity: 0; animation: ripple 2.4s ease-out infinite; }
+.orbit-ring.delay { animation-delay: 1.2s; }
+@keyframes ripple { from { transform: scale(.55); opacity: .9; } to { transform: scale(1.15); opacity: 0; } }
+.orbit-core { position: absolute; inset: 22px; border-radius: 50%; background: #2f684e; color: #d9f18a; font-size: 26px; display: flex; align-items: center; justify-content: center; animation: spin 6s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-title { font-size: 21px; font-weight: 800; line-height: 1.5; }
+.loading-description { display: block; font-size: 13px; color: #596a50; margin-top: 6px; line-height: 1.8; }
+.loading-people { display: flex; justify-content: center; gap: 14px; margin: 18px 0 14px; }
+.loading-person { position: relative; animation: bob 1.2s ease-in-out infinite; }
+.loading-person.done { animation: none; }
+.loading-person-state { position: absolute; right: -4px; bottom: -4px; width: 18px; height: 18px; border-radius: 50%; font-size: 11px; color: #fff; background: #2f684e; display: flex; align-items: center; justify-content: center; opacity: 0; transform: scale(.4); transition: all .3s cubic-bezier(.3,1.6,.5,1); }
+.done .loading-person-state { opacity: 1; transform: scale(1); }
+@keyframes bob { 50% { transform: translateY(-5px); } }
+.progress-track { height: 6px; background: #dfe7d1; border-radius: 3px; overflow: hidden; }
+.progress-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, #4f8a55, #9cc95f, #4f8a55); background-size: 200% 100%; transition: width .6s ease; animation: shimmer 1.6s linear infinite; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+.tip-line { height: 24px; margin-top: 12px; overflow: hidden; }
+.tip-text { display: block; font-size: 12px; color: #5d6f52; animation: tip-in .5s ease both; }
+@keyframes tip-in { from { opacity: 0; transform: translateY(10px); } }
+.loading-footnote { display: block; color: #6c795e; font-size: 12px; margin-top: 14px; }
+.pause-button { margin-top: 18px; font-size: 13px; color: #2f684e; background: #fff; border-color: #cdd9bb; }
+.cancel-button { font-size: 12px; color: #7d6349; margin-top: 4px; min-height: 44px; padding: 12px; }
+@media (prefers-reduced-motion: reduce) {
+  .step-pane, .choice-card, .choice-row, .panel-person, .recovery-card, .form-notice, .fold-body, .billing-details, .preference-editor, .loading-overlay, .loading-card, .tip-text, .shake { animation: none !important; }
+  .orbit-ring, .orbit-core, .loading-person, .progress-fill, .service-dot { animation: none !important; }
+  .wizard-fill, .length-fill, .switch, .switch-knob, .choice-check, .fold-icon, .progress-fill { transition: none !important; }
+}
+@media (max-width: 360px) { .step-title { font-size: 23px; } .choice-card { min-height: 96px; } }
+.is-pressed { transform: scale(.97); opacity: .92; }
 </style>
