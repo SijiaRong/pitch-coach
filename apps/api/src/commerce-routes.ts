@@ -10,6 +10,7 @@ import {
   SERVICE_FEE_RATE_BPS,
   makeDemoScene,
   readDemoScene,
+  getGift,
 } from '@pitchcoach/shared';
 import type { PrivateProjectPack, PublishedProject } from '@pitchcoach/shared';
 import { requireOwner } from './auth';
@@ -29,9 +30,10 @@ export function registerCommerce(
   fetcher: typeof fetch = fetch,
 ) {
   const api = new WechatApi(config, fetcher);
-  const store = config.sharingEnabled
-    ? new ProjectStore(config.PROJECT_DATABASE_PATH, config.PROJECT_DATA_KEY)
-    : undefined;
+  const store =
+    config.sharingEnabled || config.cloudStorageEnabled
+      ? new ProjectStore(config.PROJECT_DATABASE_PATH, config.PROJECT_DATA_KEY)
+      : undefined;
   const payments = store ? new VirtualPayment(config, api, identities, store) : undefined;
   const notifyCrypto = config.paymentEnabled
     ? new WechatNotifyCrypto(
@@ -41,7 +43,7 @@ export function registerCommerce(
       )
     : undefined;
   const requireStore = () => {
-    if (!store)
+    if (!store || !config.sharingEnabled)
       throw new PublicError(
         503,
         'SHARING_NOT_CONFIGURED',
@@ -75,7 +77,7 @@ export function registerCommerce(
     shareCodeAvailable: Boolean(config.WECHAT_APP_ID && config.WECHAT_APP_SECRET),
     purchasableUnlock: payments?.available('unlock', row.price) ?? false,
     purchasableTipPricesFen: PRICE_PRESETS_FEN.filter((amount) =>
-      payments?.available('tip', amount),
+      payments?.available('gift', amount),
     ),
     serviceFeeRateBps: SERVICE_FEE_RATE_BPS,
   });
@@ -261,7 +263,7 @@ export function registerCommerce(
         db = requireStore();
       const project = db.project(id);
       if (project.owner === buyer)
-        throw new PublicError(400, 'OWN_PROJECT', '不能购买或打赏自己的项目');
+        throw new PublicError(400, 'OWN_PROJECT', '不能向自己的项目购买资料或送礼');
       const requestHash = createHash('sha256')
         .update(JSON.stringify({ id, ...input }))
         .digest('hex');
@@ -285,7 +287,7 @@ export function registerCommerce(
         throw new PublicError(409, 'PRICE_CHANGED', '价格或公开设置已变化，请确认新价格后重试');
       if (
         (input.kind === 'unlock' && (!project.unlock_enabled || !project.pack)) ||
-        (input.kind === 'tip' && !project.tips_enabled)
+        (input.kind === 'gift' && !project.tips_enabled)
       )
         throw new PublicError(409, 'OFFER_DISABLED', '项目方未开放本项服务');
       if (!project.fee_consented_at)
@@ -306,7 +308,7 @@ export function registerCommerce(
         throw new PublicError(429, 'ORDER_LIMIT', '未完成订单过多，请先处理已有订单');
       db.db
         .prepare(
-          "INSERT INTO orders(id,project_id,buyer,kind,amount,status,product,openid,snapshot,contact,message,idem,request_hash,created_at) VALUES(?,?,?,?,?,'pending',?,?,?,?,?,?,?,?)",
+          "INSERT INTO orders(id,project_id,buyer,kind,amount,status,product,openid,snapshot,contact,message,idem,request_hash,created_at,gift_id,gift_name) VALUES(?,?,?,?,?,'pending',?,?,?,?,?,?,?,?,?,?)",
         )
         .run(
           orderId,
@@ -322,6 +324,8 @@ export function registerCommerce(
           input.idempotencyKey,
           requestHash,
           new Date().toISOString(),
+          input.giftId ?? null,
+          getGift(input.giftId)?.name ?? null,
         );
       const order = db.order(orderId);
       return reply

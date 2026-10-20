@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, chmodSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type {
@@ -7,6 +7,7 @@ import type {
   EvaluationReport,
   PrivateProjectPack,
   PublishProjectInput,
+  GiftId,
 } from '@pitchcoach/shared';
 import { publicReportCopy, revenueSplit, SERVICE_FEE_RATE_BPS } from '@pitchcoach/shared';
 import { PublicError } from './errors';
@@ -32,7 +33,9 @@ export interface OrderRow {
   id: string;
   project_id: string;
   buyer: string;
-  kind: 'unlock' | 'tip';
+  kind: CommerceOrder['kind'];
+  gift_id: GiftId | null;
+  gift_name: string | null;
   amount: number;
   status: CommerceOrder['status'];
   product: string;
@@ -58,8 +61,9 @@ export class ProjectStore {
   constructor(path: string, key: string) {
     if (!/^[a-f\d]{64}$/i.test(key)) throw new Error('Invalid project encryption key');
     this.key = Buffer.from(key, 'hex');
-    if (path !== ':memory:') mkdirSync(dirname(resolve(path)), { recursive: true });
+    if (path !== ':memory:') mkdirSync(dirname(resolve(path)), { recursive: true, mode: 0o700 });
     this.db = new DatabaseSync(path);
+    if (path !== ':memory:') chmodSync(path, 0o600);
     this.db.exec(`PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL;
       CREATE TABLE IF NOT EXISTS projects(id TEXT PRIMARY KEY,owner TEXT NOT NULL,report TEXT NOT NULL,pack TEXT,anonymous INTEGER NOT NULL,unlock_enabled INTEGER NOT NULL,price INTEGER NOT NULL,tips_enabled INTEGER NOT NULL,active INTEGER NOT NULL DEFAULT 1,revision INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL,views INTEGER NOT NULL DEFAULT 0,referrals INTEGER NOT NULL DEFAULT 0,code TEXT);
       CREATE INDEX IF NOT EXISTS projects_owner ON projects(owner);
@@ -75,6 +79,8 @@ export class ProjectStore {
         channel_fee: 'INTEGER',
         fee_rate_bps: `INTEGER NOT NULL DEFAULT ${SERVICE_FEE_RATE_BPS}`,
         refund_known: 'INTEGER NOT NULL DEFAULT 1',
+        gift_id: 'TEXT',
+        gift_name: 'TEXT',
       },
     })) {
       const present = new Set(
@@ -264,5 +270,8 @@ export const orderDto = (order: OrderRow): CommerceOrder => ({
   mode: 'live',
   createdAt: order.created_at,
   serviceFeeRateBps: order.fee_rate_bps,
+  ...(order.gift_id && order.gift_name
+    ? { gift: { id: order.gift_id, name: order.gift_name } }
+    : {}),
   ...(order.paid_at ? { paidAt: order.paid_at } : {}),
 });

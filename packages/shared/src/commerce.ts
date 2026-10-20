@@ -7,6 +7,21 @@ export const PRICE_PRESETS_FEN = [888, 8888, 88888, 888888] as const;
 export const DEFAULT_UNLOCK_FEN = 8888;
 export const MAX_PRICE_FEN = 9999999;
 export const SERVICE_FEE_RATE_BPS = 500;
+export const GIFT_IDS = ['spark', 'booster', 'rocket', 'starship'] as const;
+export type GiftId = (typeof GIFT_IDS)[number];
+export const GIFTS = [
+  { id: 'spark', name: '火花', symbol: '✦', amountFen: 888, caption: '为好想法点亮第一束光' },
+  { id: 'booster', name: '助推器', symbol: '⚡', amountFen: 8888, caption: '给下一步多一点能量' },
+  { id: 'rocket', name: '火箭', symbol: '🚀', amountFen: 88888, caption: '让这个项目再向前一步' },
+  {
+    id: 'starship',
+    name: '星舰',
+    symbol: '🛸',
+    amountFen: 888888,
+    caption: '陪一个大胆的想法远航',
+  },
+] as const;
+export const getGift = (id: GiftId | undefined) => GIFTS.find((gift) => gift.id === id);
 /** Round each order's fee to the nearest fen, half up. Never calculate from list price. */
 export function revenueSplit(
   receiptFen: number,
@@ -137,7 +152,8 @@ export interface PublishedProject {
 }
 export const createOrderSchema = z
   .object({
-    kind: z.enum(['unlock', 'tip']),
+    kind: z.enum(['unlock', 'gift']),
+    giftId: z.enum(GIFT_IDS).optional(),
     amountFen: z.number().int().min(1).max(MAX_PRICE_FEN),
     expectedRevision: z.number().int().min(1),
     role: z.enum(['investor', 'entrepreneur', 'supporter']),
@@ -156,14 +172,24 @@ export const createOrderSchema = z
         message: '留下联系方式前，请同意仅向项目方提供',
         path: ['contact'],
       });
-    if (value.kind === 'tip' && !(PRICE_PRESETS_FEN as readonly number[]).includes(value.amountFen))
-      ctx.addIssue({ code: 'custom', message: '请选择提供的四档支持金额', path: ['amountFen'] });
+    if (
+      value.kind === 'gift' &&
+      (!getGift(value.giftId) || getGift(value.giftId)!.amountFen !== value.amountFen)
+    )
+      ctx.addIssue({
+        code: 'custom',
+        message: '请重新选择礼物，价格以礼物目录为准',
+        path: ['giftId'],
+      });
+    if (value.kind === 'unlock' && value.giftId)
+      ctx.addIssue({ code: 'custom', message: '资料解锁不能附带礼物', path: ['giftId'] });
   });
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;
 export interface CommerceOrder {
   id: string;
   projectId: string;
-  kind: 'unlock' | 'tip';
+  kind: 'unlock' | 'gift' | 'tip';
+  gift?: { id: GiftId; name: string };
   amountFen: number;
   status: 'pending' | 'paid' | 'refunded' | 'closed';
   mode: 'live' | 'demo';

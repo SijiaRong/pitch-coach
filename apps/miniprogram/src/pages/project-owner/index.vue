@@ -141,7 +141,7 @@ function stopSharing() {
           placeholder="自定义金额，单位元"
         /><text class="owner-help"
           >新价格需匹配微信已发布的商品价位；旧订单保留原价格及原资料，价格变化后需要购买者重新确认。</text
-        ><button class="choice" @click="tips = !tips">{{ tips ? '☑' : '☐' }} 开启自愿打赏</button
+        ><button class="choice" @click="tips = !tips">{{ tips ? '☑' : '☐' }} 开启项目礼物</button
         ><button
           class="choice"
           role="checkbox"
@@ -164,9 +164,14 @@ function stopSharing() {
           笔订单。仅展示已核实付款、且参与者主动授权的联系方式；这些信息不向公开页访客展示。</text
         ><view v-for="order in data.orders" :key="order.id" class="lead"
           ><view
-            >{{ order.kind === 'unlock' ? '资料解锁' : '项目打赏' }} · ¥{{
-              formatPrice(order.amountFen)
+            >{{
+              order.kind === 'unlock'
+                ? '资料解锁'
+                : order.gift
+                  ? `收到${order.gift.name}`
+                  : '历史支持记录'
             }}
+            · ¥{{ formatPrice(order.amountFen) }}
             <text>{{
               { pending: '待核对', paid: '已核实', refunded: '已退款', closed: '已关闭' }[
                 order.status

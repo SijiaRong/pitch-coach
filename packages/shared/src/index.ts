@@ -6,3 +6,4 @@ export * from './diagnostic-schema';
 export * from './diagnostics';
 export * from './commerce';
 export * from './billing';
+export * from './account';

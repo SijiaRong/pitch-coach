@@ -58,7 +58,7 @@ async function inspect(order: CommerceOrder) {
 </script>
 <template>
   <view class="page compact commerce-page"
-    ><PageHeader back label="我的项目与购买" /><view class="commerce-title"
+    ><PageHeader back label="项目与礼物" /><view class="commerce-title"
       >让每一份参与，<br />都有记录。</view
     >
     <view class="commerce-tabs"
@@ -69,7 +69,7 @@ async function inspect(order: CommerceOrder) {
       >
         我的公开项目</button
       ><button class="commerce-tab" :class="{ active: tab === 'orders' }" @click="tab = 'orders'">
-        我的购买与打赏
+        我的购买与礼物
       </button></view
     >
     <view v-if="error" class="error-box" role="alert">{{ error }}</view
@@ -94,9 +94,14 @@ async function inspect(order: CommerceOrder) {
     <template v-if="tab === 'orders'"
       ><view v-for="order in orders" :key="order.id" class="record-card"
         ><view class="record-title"
-          >{{ order.kind === 'unlock' ? '项目资料解锁' : '自愿项目打赏' }} · ¥{{
-            formatPrice(order.amountFen)
-          }}</view
+          >{{
+            order.kind === 'unlock'
+              ? '项目资料解锁'
+              : order.gift
+                ? `送出${order.gift.name}`
+                : '历史支持记录'
+          }}
+          · ¥{{ formatPrice(order.amountFen) }}</view
         ><text class="record-meta"
           >{{ labels[order.status] }} · {{ order.createdAt.slice(0, 10) }}</text
         ><text class="order-number">订单 {{ order.id }}</text
@@ -119,7 +124,7 @@ async function inspect(order: CommerceOrder) {
           </button></view
         ></view
       ><view v-if="!busy && !orders.length" class="empty-hint"
-        >还没有购买或打赏记录。取消、退款和支付结果均以后端核对为准。</view
+        >还没有购买或送礼记录。取消、退款和支付结果均以后端核对为准。</view
       ><text class="commerce-note"
         >购买记录在登录的微信身份下保留。已停止公开的项目仍可通过这里查看已购资料；退款后访问权限会被撤销。退款与售后请通过平台订单或运营方渠道发起，iOS
         订单按 App Store 流程处理。</text

@@ -438,17 +438,28 @@ describe('公开项目与真实支付权限边界', () => {
     ).toBe(200);
     expect((await f.app.inject(`/api/projects/${f.project.id}/code.png`)).statusCode).toBe(404);
   });
-  it('非专业用户可选固定打赏，联系方式只对项目方且在付款核验后可见', async () => {
+  it('围观者购买礼物，名称和金额由服务端目录绑定，留联仅在核实后提供项目方', async () => {
     const f = await fixture();
     const input = {
       ...f.purchase,
-      kind: 'tip',
+      kind: 'gift',
+      giftId: 'spark',
       role: 'supporter',
       amountFen: 888,
       contact: 'supporter-private-contact',
       shareContactConsent: true,
       message: '期待产品上线',
     };
+    expect(
+      (
+        await f.app.inject({
+          method: 'POST',
+          url: `/api/projects/${f.project.id}/orders`,
+          headers: f.buyer,
+          payload: { ...input, giftId: 'rocket', idempotencyKey: randomUUID() },
+        })
+      ).statusCode,
+    ).toBe(400);
     const created = await f.app.inject({
       method: 'POST',
       url: `/api/projects/${f.project.id}/orders`,
@@ -456,6 +467,11 @@ describe('公开项目与真实支付权限边界', () => {
       payload: input,
     });
     expect(created.statusCode).toBe(201);
+    expect(created.json().order).toMatchObject({
+      kind: 'gift',
+      gift: { id: 'spark', name: '火花' },
+      amountFen: 888,
+    });
     const id = created.json().order.id;
     expect(
       (await f.app.inject({ url: `/api/projects/${f.project.id}/owner`, headers: f.owner })).body,

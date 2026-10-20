@@ -26,6 +26,7 @@ const envSchema = z.object({
   WECHAT_APP_SECRET: z.string().default(''),
   OWNER_ID_SECRET: z.string().default(''),
   PROJECT_SHARING_ENABLED: z.enum(['true', 'false']).default('false'),
+  CLOUD_STORAGE_ENABLED: z.enum(['true', 'false']).default('false'),
   PROJECT_DATABASE_PATH: z.string().default(''),
   PROJECT_DATA_KEY: z.string().default(''),
   PUBLIC_WEB_URL: z.string().default(''),
@@ -63,23 +64,30 @@ export type Config = ReturnType<typeof loadConfig>;
 export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
   const value = envSchema.parse(env);
   const sharingEnabled = value.PROJECT_SHARING_ENABLED === 'true';
+  const cloudStorageEnabled = value.CLOUD_STORAGE_ENABLED === 'true';
   const paymentEnabled = value.VIRTUALPAY_ENABLED === 'true';
   const paymentProducts = z
     .record(
-      z.string().regex(/^(unlock|tip):[1-9]\d{0,6}$/),
+      z.string().regex(/^(unlock|gift|tip):[1-9]\d{0,6}$/),
       z.string().regex(/^[A-Za-z0-9_.-]{1,100}$/),
     )
     .parse(JSON.parse(value.VIRTUALPAY_PRODUCTS));
   if (
-    sharingEnabled &&
+    (sharingEnabled || cloudStorageEnabled) &&
     (!value.PROJECT_DATABASE_PATH ||
       !/^[a-fA-F0-9]{64}$/.test(value.PROJECT_DATA_KEY) ||
       value.OWNER_ID_SECRET.length < 32 ||
       value.SESSION_SECRET.length < 32)
   )
     throw new Error(
-      '公开项目需要持久数据库、64位十六进制 PROJECT_DATA_KEY、32位以上 OWNER_ID_SECRET 和 SESSION_SECRET',
+      '公开项目或云端保存需要持久数据库、64位十六进制 PROJECT_DATA_KEY、32位以上 OWNER_ID_SECRET 和 SESSION_SECRET',
     );
+  if (
+    (sharingEnabled || cloudStorageEnabled) &&
+    value.NODE_ENV === 'production' &&
+    !isAbsolute(value.PROJECT_DATABASE_PATH)
+  )
+    throw new Error('项目和云端报告数据库必须使用发布目录之外的绝对持久化路径');
   if (value.PUBLIC_WEB_URL) {
     const publicUrl = new URL(value.PUBLIC_WEB_URL);
     if (
@@ -188,6 +196,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
   return {
     ...value,
     sharingEnabled,
+    cloudStorageEnabled,
     paymentEnabled,
     paymentProducts,
     SESSION_SECRET: value.SESSION_SECRET || randomBytes(32).toString('hex'),

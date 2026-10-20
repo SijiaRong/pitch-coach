@@ -10,6 +10,7 @@ import {
   revenueSplit,
   makeDemoScene,
   readDemoScene,
+  GIFTS,
 } from './commerce';
 import { INDUSTRY_IDS, ROUND_IDS, DEFAULT_PREFERENCES } from './catalog';
 describe('项目参与金额与披露规则', () => {
@@ -20,11 +21,12 @@ describe('项目参与金额与披露规则', () => {
     for (const value of ['0', '-1', '1e3', '8.888', 'NaN', 'Infinity', '01.00', '100000', '8,88'])
       expect(parsePrice(value)).toBeUndefined();
   });
-  it('公开与私密披露分开确认；留联系方式必须主动授权，打赏限定四档', () => {
+  it('公开与私密披露分开确认；留联系方式必须主动授权，礼物绑定固定目录', () => {
     const input = { report: createDemoReport(), publicReportConsent: true, unlockEnabled: true };
     expect(publishProjectSchema.safeParse(input).success).toBe(false);
     const base = {
-      kind: 'tip',
+      kind: 'gift',
+      giftId: 'spark',
       amountFen: 888,
       expectedRevision: 1,
       role: 'supporter',
@@ -32,6 +34,13 @@ describe('项目参与金额与披露规则', () => {
       idempotencyKey: '00000000-0000-4000-8000-000000000001',
     };
     expect(createOrderSchema.safeParse(base).success).toBe(true);
+    for (const gift of GIFTS)
+      expect(
+        createOrderSchema.safeParse({ ...base, giftId: gift.id, amountFen: gift.amountFen })
+          .success,
+      ).toBe(true);
+    expect(createOrderSchema.safeParse({ ...base, giftId: 'rocket' }).success).toBe(false);
+    expect(createOrderSchema.safeParse({ ...base, kind: 'tip' }).success).toBe(false);
     expect(createOrderSchema.safeParse({ ...base, amountFen: 100 }).success).toBe(false);
     expect(createOrderSchema.safeParse({ ...base, contact: '微信 user123' }).success).toBe(false);
     expect(

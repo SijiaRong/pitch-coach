@@ -649,12 +649,12 @@ async function submit() {
     <PageHeader />
     <view class="pitch-heading">
       <text class="eyebrow">开始一场模拟评审</text>
-      <view class="pitch-title">说清项目，<br />准备好下一轮追问。</view>
-      <text class="caption">写下项目现状，三位虚构 AI 教练帮你找出下一步要回答的问题。</text>
+      <view class="pitch-title">你的项目，<br />准备好被追问了吗？</view>
+      <text class="caption">说清你在做什么，三位 AI 教练接着问。</text>
     </view>
 
     <view class="sample-card">
-      <view><text class="sample-title">先看看，会得到什么</text><text class="sample-caption">固定虚构案例 · 无需填写 · 不调用 AI · 不收费</text></view>
+      <view><text class="sample-title">还没准备好？</text><text class="sample-caption">先看固定示例，不收费。</text></view>
       <button class="sample-button" :disabled="busy || uploading" @click="demo">免费示例 ↗</button>
     </view>
     <view class="service-status" :class="{ unavailable: serviceState !== 'ready' }" role="status">
@@ -683,7 +683,7 @@ async function submit() {
         <view class="field-label"><text>项目介绍 <text class="required-label">必填</text></text><button class="text-link" :disabled="uploading" @click="fillExample">填入虚构示例</button></view>
         <view class="description-guide"><text>服务谁</text><text>解决什么问题</text><text>怎么赚钱</text><text>验证了什么</text></view>
         <textarea v-model="description" class="description-input" :class="{ invalid: fieldErrors.description }" placeholder="我们为……提供……，通过……收费。目前已经……。有数据就说数据，还没验证也可以坦诚说明。" :maxlength="3000" :auto-height="false" aria-label="项目介绍，必填，30至3000字" :aria-invalid="Boolean(fieldErrors.description)" @input="exampleFilled = false" />
-        <view class="input-footer"><text :class="{ 'counter-short': description.trim().length > 0 && description.trim().length < 30 }">{{ description.trim().length < 30 ? `至少 30 字，还差 ${30 - description.trim().length} 字` : '介绍已达最低字数，可继续补充事实' }}</text><text>{{ description.length }}/3000</text></view>
+        <view class="input-footer"><text :class="{ 'counter-short': description.trim().length > 0 && description.trim().length < 30 }">{{ description.trim().length < 30 ? `至少 30 字，还差 ${30 - description.trim().length} 字` : '可以开始了' }}</text><text>{{ description.length }}/3000</text></view>
         <text v-if="fieldErrors.description" class="field-error" role="alert">{{ fieldErrors.description }}</text>
       </view>
       <view v-if="exampleFilled" class="example-notice"><text>当前填写的是虚构示例，真实 AI 评审仍按页面规则计费。</text><button class="text-link" @click="demo">只看免费示例 →</button></view>
@@ -723,8 +723,8 @@ async function submit() {
     <view class="form-section">
       <view class="form-section-heading"><text class="section-number">03</text><view><view class="form-section-title">资料与授权</view><text class="section-description">BP 选填；上传与真实评审前需要你的授权。</text></view></view>
       <view id="field-consent" class="consent-card" :class="{ invalid: fieldErrors.consent }">
-        <button class="consent-row" role="checkbox" :aria-checked="consent" @click="toggleConsent"><view class="checkbox" :class="{ checked: consent }">{{ consent ? '✓' : '' }}</view><text>我同意将本次资料用于文字提取，并发送给 DeepSeek 进行评审。报告保存在本机，不会自动公开。请勿提交无权使用的资料。</text></button>
-        <button class="privacy-link" @click="uni.navigateTo({ url: aboutPath('privacy') })">查看资料处理与隐私说明 →</button>
+        <button class="consent-row" role="checkbox" :aria-checked="consent" @click="toggleConsent"><view class="checkbox" :class="{ checked: consent }">{{ consent ? '✓' : '' }}</view><text>我同意提取本次资料文字，并交给 DeepSeek 评审。报告不会自动公开。</text></button>
+
         <button class="privacy-link" @click="uni.navigateTo({ url: '/pages/privacy/index?section=ai' })">DeepSeek 资料处理与撤回同意 →</button>
         <button class="privacy-link" @click="uni.navigateTo({ url: '/pages/privacy/index?section=terms' })">使用须知 →</button>
         <text v-if="fieldErrors.consent" class="field-error" role="alert">请先阅读并勾选资料处理授权。</text>

@@ -16,17 +16,32 @@ import PageHeader from '@/components/PageHeader.vue';
 import InvestorAvatar from '@/components/InvestorAvatar.vue';
 import RiskDiagnosis from '@/components/RiskDiagnosis.vue';
 import ReviewEntryCard from '@/components/ReviewEntryCard.vue';
+import CloudSaveStatus from '@/components/CloudSaveStatus.vue';
 import { useReviewOffer } from '@/lib/review-offer';
 import { openReviewEntry } from '@/lib/review-entry';
-import { friendShareMessage, timelineShareMessage, parseShareEntry, sharePath, aboutPath } from '@/lib/share-entry';
+import {
+  friendShareMessage,
+  timelineShareMessage,
+  parseShareEntry,
+  sharePath,
+  aboutPath,
+} from '@/lib/share-entry';
 const { state: offerState, offer, load: loadOffer } = useReviewOffer();
-onShow(() => { void loadOffer(); });
+onShow(() => {
+  void loadOffer();
+});
 import { findReport } from '@/lib/storage';
-import { drawPoster, savePoster, POSTER_CANVAS_ID,POSTER_ENTRY_HEIGHT,posterHeight } from '@/lib/poster';
-import type {PosterEntry} from '@/lib/poster';
-import {findPublication,projectPath} from '@/lib/publication';
-import type {PublicationLink} from '@/lib/publication';
-import {getProject,projectCodePath,demoCodeEntry} from '@/lib/commerce-api';
+import {
+  drawPoster,
+  savePoster,
+  POSTER_CANVAS_ID,
+  POSTER_ENTRY_HEIGHT,
+  posterHeight,
+} from '@/lib/poster';
+import type { PosterEntry } from '@/lib/poster';
+import { findPublication, projectPath } from '@/lib/publication';
+import type { PublicationLink } from '@/lib/publication';
+import { getProject, projectCodePath, demoCodeEntry } from '@/lib/commerce-api';
 import { sharePoster } from '@/lib/share';
 
 const report = ref<EvaluationReport>();
@@ -36,9 +51,14 @@ const expandedInvestor = ref('');
 const posterOpen = ref(false);
 const posterPath = ref('');
 const anonymous = ref(true);
-const publication=ref<PublicationLink>(),entry=ref<PosterEntry>();
-const canvasStyle={height:`${POSTER_ENTRY_HEIGHT}px`};
-const previewStyle=computed(()=>({height:`${posterHeight(entry.value)*0.65}px`,maxHeight:'54vh',width:'195px'}));
+const publication = ref<PublicationLink>(),
+  entry = ref<PosterEntry>();
+const canvasStyle = { height: `${POSTER_ENTRY_HEIGHT}px` };
+const previewStyle = computed(() => ({
+  height: `${posterHeight(entry.value) * 0.65}px`,
+  maxHeight: '54vh',
+  width: '195px',
+}));
 const posterBusy = ref(false);
 const saveBusy = ref(false);
 const albumPermissionDenied = ref(false);
@@ -51,24 +71,50 @@ const diagnosticSummary = computed(() =>
 const industry = computed(() => (report.value ? getIndustry(report.value.industry) : undefined));
 const roundName = computed(() => getRound(report.value?.round || 'angel').name);
 const firstAction = computed(() => report.value?.actions[0]);
+const conclusionExpanded = ref(false);
 
 onLoad((options) => {
-  if(options?.share){uni.redirectTo({url:`/pages/project/index?share=${encodeURIComponent(options.share)}`});return;}
+  if (options?.share) {
+    uni.redirectTo({ url: `/pages/project/index?share=${encodeURIComponent(options.share)}` });
+    return;
+  }
   if (options?.from !== undefined) {
     const safe = parseShareEntry(options);
     uni.reLaunch({ url: safe.from ? sharePath(safe.from, safe) : '/pages/index/index' });
     return;
   }
   if (options?.id) report.value = findReport(options.id);
-  if(report.value)publication.value=findPublication(report.value.id);
-  if(options?.publication&&report.value&&/^[A-Za-z0-9_-]{22}$/.test(options.publication))publication.value={reportId:report.value.id,projectId:options.publication,anonymous:true};
-  if(options?.poster==='1')void nextTick().then(()=>makePoster());
+  if (report.value) publication.value = findPublication(report.value.id);
+  if (options?.publication && report.value && /^[A-Za-z0-9_-]{22}$/.test(options.publication))
+    publication.value = {
+      reportId: report.value.id,
+      projectId: options.publication,
+      anonymous: true,
+    };
+  if (options?.poster === '1') void nextTick().then(() => makePoster());
 });
-onShow(()=>{if(report.value)publication.value=findPublication(report.value.id)||publication.value;});
-onShareAppMessage(() => ({...friendShareMessage(report.value),...(publication.value?{path:projectPath(publication.value)}:{})}));
-onShareTimeline(() => ({...timelineShareMessage(report.value),...(publication.value&&!publication.value.example?{query:`share=${publication.value.projectId}`}:{})}));
+onShow(() => {
+  if (report.value) publication.value = findPublication(report.value.id) || publication.value;
+});
+onShareAppMessage(() => ({
+  ...friendShareMessage(report.value),
+  ...(publication.value ? { path: projectPath(publication.value) } : {}),
+}));
+onShareTimeline(() => ({
+  ...timelineShareMessage(report.value),
+  ...(publication.value && !publication.value.example
+    ? { query: `share=${publication.value.projectId}` }
+    : {}),
+}));
 function toolShareFallback() {
-  uni.showModal({ title: '在微信中分享', content: publication.value?'分享入口将打开你已确认公开的评估。':'朋友会打开首页，你的报告不会自动公开。', showCancel: false, confirmText: '知道了' });
+  uni.showModal({
+    title: '在微信中分享',
+    content: publication.value
+      ? '分享入口将打开你已确认公开的评估。'
+      : '朋友会打开首页，你的报告不会自动公开。',
+    showCancel: false,
+    confirmText: '知道了',
+  });
 }
 
 async function makePoster() {
@@ -91,10 +137,27 @@ async function renderPoster() {
   const drawingAnonymous = anonymous.value;
   await nextTick();
   try {
-    if(publication.value&&!publication.value.example){await getProject(publication.value.projectId);entry.value={codePath:await projectCodePath(publication.value.projectId)};}
-    else if(publication.value?.example){try{entry.value=await demoCodeEntry({industry:publication.value.example,round:publication.value.round||'angel',priceFen:publication.value.priceFen||8888,anonymous:publication.value.anonymous,preferences:publication.value.preferences||DEFAULT_PREFERENCES,unlockEnabled:publication.value.unlockEnabled,tipsEnabled:publication.value.tipsEnabled});}catch{entry.value=undefined;shareHint.value='示例扫码服务待配置，当前海报不含码。';}}
+    if (publication.value && !publication.value.example) {
+      await getProject(publication.value.projectId);
+      entry.value = { codePath: await projectCodePath(publication.value.projectId) };
+    } else if (publication.value?.example) {
+      try {
+        entry.value = await demoCodeEntry({
+          industry: publication.value.example,
+          round: publication.value.round || 'angel',
+          priceFen: publication.value.priceFen || 8888,
+          anonymous: publication.value.anonymous,
+          preferences: publication.value.preferences || DEFAULT_PREFERENCES,
+          unlockEnabled: publication.value.unlockEnabled,
+          tipsEnabled: publication.value.tipsEnabled,
+        });
+      } catch {
+        entry.value = undefined;
+        shareHint.value = '示例扫码服务待配置，当前海报不含码。';
+      }
+    }
     await nextTick();
-    const path = await drawPoster(report.value, drawingAnonymous,entry.value);
+    const path = await drawPoster(report.value, drawingAnonymous, entry.value);
     if (drawingAnonymous === anonymous.value) posterPath.value = path;
   } catch (cause) {
     posterError.value = cause instanceof Error ? cause.message : '海报生成失败';
@@ -147,11 +210,16 @@ async function share() {
   shareBusy.value = true;
   posterError.value = '';
   try {
-    const result = await sharePoster(posterPath.value, report.value,publication.value&&!publication.value.example?projectPath(publication.value):undefined);
+    const result = await sharePoster(
+      posterPath.value,
+      report.value,
+      publication.value && !publication.value.example ? projectPath(publication.value) : undefined,
+    );
     if (result === 'preview')
       shareHint.value =
         '当前环境无法打开微信分享菜单，已打开大图预览。请在手机微信中分享；也可使用下方保存图片。';
-    if (result === 'opened') shareHint.value = '分享菜单已打开，尚不代表发布成功；请在微信中自行选择并确认。';
+    if (result === 'opened')
+      shareHint.value = '分享菜单已打开，尚不代表发布成功；请在微信中自行选择并确认。';
     if (result === 'cancelled') shareHint.value = '已取消分享，海报仍在这里。';
   } catch (cause) {
     posterError.value = cause instanceof Error ? cause.message : '分享菜单暂不可用';
@@ -173,7 +241,12 @@ async function showActions() {
   await nextTick();
   uni.pageScrollTo({ selector: '#report-details', duration: 220 });
 }
-const retry = () => openReviewEntry({ report: report.value, industry: report.value?.industry, round: report.value?.round });
+const retry = () =>
+  openReviewEntry({
+    report: report.value,
+    industry: report.value?.industry,
+    round: report.value?.round,
+  });
 </script>
 
 <template>
@@ -189,7 +262,6 @@ const retry = () => openReviewEntry({ report: report.value, industry: report.val
       <view v-if="report.mode === 'demo'" class="demo-notice"
         >本报告为虚构项目与固定演示评分，未调用 AI。</view
       >
-      <ReviewEntryCard v-if="report.mode === 'demo'" :report="report" :state="offerState" :offer="offer" />
       <view class="report-name">{{ report.projectName }}</view
       ><view class="report-meta"
         ><text>{{ industry?.name }}</text
@@ -218,20 +290,37 @@ const retry = () => openReviewEntry({ report: report.value, industry: report.val
       >
       <view class="verdict-quote"
         ><text class="quote-mark">“</text><text>{{ report.headline }}</text></view
-      ><text class="report-summary">{{ report.summary }}</text>
+      ><CloudSaveStatus :report="report" /><text v-if="conclusionExpanded" class="report-summary">{{
+        report.summary
+      }}</text>
       <view class="diagnosis-conclusion" :class="{ blocked: report.diagnostics?.redFlags.length }">
         <text class="diagnosis-counts">{{ diagnosticSummary?.counts }}</text>
-        <text
-          v-for="reason in report.decisionReasons || []"
-          :key="reason"
-          class="decision-reason"
-          >{{ reason }}</text
+        <template v-if="conclusionExpanded"
+          ><text
+            v-for="reason in report.decisionReasons || []"
+            :key="reason"
+            class="decision-reason"
+            >{{ reason }}</text
+          ></template
         >
+        <button
+          class="conclusion-toggle"
+          :aria-expanded="conclusionExpanded"
+          @click="conclusionExpanded = !conclusionExpanded"
+        >
+          结论依据 {{ conclusionExpanded ? '−' : '+' }}
+        </button>
         <text v-if="!report.diagnostics" class="decision-reason"
           >旧报告尚未完成专项风险检查，建议重新评估。</text
         >
       </view>
-      <view v-if="report.missingInvestors.length" class="notice partial-notice">已展示完成的 {{ report.investors.length }} / 3 位结果。{{ report.mode === 'live' ? '本次已计1次；可先使用现有建议补证，新一轮按页面规则计次。' : '这是固定虚构示例；真实评审会按实际完成展示。' }}</view>
+      <view v-if="report.missingInvestors.length" class="notice partial-notice"
+        >已展示完成的 {{ report.investors.length }} / 3 位结果。{{
+          report.mode === 'live'
+            ? '本次已计1次；可先使用现有建议补证，新一轮按页面规则计次。'
+            : '这是固定虚构示例；真实评审会按实际完成展示。'
+        }}</view
+      >
       <text class="score-explainer"
         >分数只计算有原文证据的维度，不等于项目成功概率。资料不足的维度不记为零分。</text
       >
@@ -345,19 +434,29 @@ const retry = () => openReviewEntry({ report: report.value, industry: report.val
             ><view class="action-dimension">{{ action.dimension }}</view
             ><text class="action-task">{{ action.task }}</text></view
           ></view
-        ><button class="secondary" @click="copyActions">复制我的改进清单 ↗</button
-        ></view
+        ><button class="secondary" @click="copyActions">复制我的改进清单 ↗</button></view
       >
 
       <view class="report-disclaimer">{{ report.disclaimer }}</view>
-      <view v-if="report.mode === 'live' && tab !== 'actions'" class="actions followthrough-actions">
+      <view
+        v-if="report.mode === 'live' && tab !== 'actions'"
+        class="actions followthrough-actions"
+      >
         <view class="action-title">先用好这一轮改进清单</view>
         <text class="caption">补齐这些证据后，再决定是否需要新一轮评审。</text>
-        <view v-for="action in report.actions" :key="action.priority" class="action-card"><text class="action-number mono">0{{ action.priority }}</text><view><view class="action-dimension">{{ action.dimension }}</view><text class="action-task">{{ action.task }}</text></view></view>
+        <view v-for="action in report.actions" :key="action.priority" class="action-card"
+          ><text class="action-number mono">0{{ action.priority }}</text
+          ><view
+            ><view class="action-dimension">{{ action.dimension }}</view
+            ><text class="action-task">{{ action.task }}</text></view
+          ></view
+        >
         <button class="secondary" @click="copyActions">复制我的改进清单 ↗</button>
       </view>
       <ReviewEntryCard :report="report" :state="offerState" :offer="offer" />
-      <view class="share-section"><view class="share-section-title">觉得有用，再分享</view><text class="share-note">完全自愿；不分享也可查看和复制全部报告。</text>
+      <view class="share-section"
+        ><view class="share-section-title">觉得有用，再分享</view
+        ><text class="share-note">完全自愿；不分享也可查看和复制全部报告。</text>
         <button class="secondary share-option" @click="makePoster">预览我的脱敏海报 ↗</button>
         <!-- #ifdef MP-WEIXIN -->
         <button class="secondary share-option" open-type="share">发给朋友试试 ↗</button>
@@ -365,13 +464,34 @@ const retry = () => openReviewEntry({ report: report.value, industry: report.val
         <!-- #ifndef MP-WEIXIN -->
         <button class="secondary share-option" @click="toolShareFallback">发给朋友试试 ↗</button>
         <!-- #endif -->
-        <button class="secondary" @click="uni.navigateTo({url:publication?projectPath(publication):`/pages/publish/index?id=${encodeURIComponent(report.id)}`})">{{publication?'查看公开报告 ↗':'公开报告，添加扫码入口 ↗'}}</button>
-        <text class="share-note">{{publication?'分享入口指向已授权公开的评估。':'报告默认私密，公开前需单独确认。'}}</text>
-        <button class="share-rules" @click="uni.navigateTo({ url: aboutPath('sharing') })">分享会展示哪些内容？ →</button>
+        <button
+          class="secondary"
+          @click="
+            uni.navigateTo({
+              url: publication
+                ? projectPath(publication)
+                : `/pages/publish/index?id=${encodeURIComponent(report.id)}`,
+            })
+          "
+        >
+          {{ publication ? '查看公开报告 ↗' : '公开报告，添加扫码入口 ↗' }}
+        </button>
+        <text class="share-note">{{
+          publication ? '分享入口指向已授权公开的评估。' : '报告默认私密，公开前需单独确认。'
+        }}</text>
+        <button class="share-rules" @click="uni.navigateTo({ url: aboutPath('sharing') })">
+          分享会展示哪些内容？ →
+        </button>
       </view>
       <button class="back-home" @click="uni.reLaunch({ url: '/pages/index/index' })">
         ← 返回AI投了么
       </button>
+      <ReviewEntryCard
+        v-if="report.mode === 'demo'"
+        :report="report"
+        :state="offerState"
+        :offer="offer"
+      />
 
       <canvas
         :id="POSTER_CANVAS_ID"
@@ -384,9 +504,7 @@ const retry = () => openReviewEntry({ report: report.value, industry: report.val
         ><view class="poster-dialog" @click.stop
           ><view class="poster-dialog-heading"
             ><text>分享前，先确认内容</text
-            ><button aria-label="关闭海报" @click="posterOpen = false">
-              ×
-            </button></view
+            ><button aria-label="关闭海报" @click="posterOpen = false">×</button></view
           ><text class="poster-caption">这里只生成预览，分享需在微信中再次确认。</text
           ><view class="poster-preview" :style="previewStyle"
             ><image
@@ -397,13 +515,33 @@ const retry = () => openReviewEntry({ report: report.value, industry: report.val
               @click="uni.previewImage({ urls: [posterPath] })"
             /><view v-if="posterBusy" class="poster-working">正在生成海报…</view>
             <view v-else-if="!posterPath" class="poster-working">海报暂未生成，请重试</view></view
-          ><button class="anonymous-toggle" :disabled="posterBusy || saveBusy || shareBusy" @click="toggleAnonymous">
+          ><button
+            class="anonymous-toggle"
+            :disabled="posterBusy || saveBusy || shareBusy"
+            @click="toggleAnonymous"
+          >
             <text>{{ anonymous ? '☑' : '☐' }} 隐藏项目名称</text
             ><text>{{ anonymous ? '已匿名' : '显示原名称' }}</text></button
-          ><text class="privacy-reminder">{{ anonymous ? '项目名称已隐藏，行业、评分与风险概况仍会展示。' : '当前会展示项目名称，请确认适合公开。' }}</text>
+          ><text class="privacy-reminder">{{
+            anonymous
+              ? '项目名称已隐藏，行业、评分与风险概况仍会展示。'
+              : '当前会展示项目名称，请确认适合公开。'
+          }}</text>
           <view v-if="posterError" class="error-box">{{ posterError }}</view>
-          <button v-if="!posterBusy && !posterPath" class="secondary poster-retry" @click="renderPoster">重新生成海报</button>
-          <button v-if="albumPermissionDenied" class="secondary poster-retry" @click="openAlbumSettings">打开相册权限设置</button>
+          <button
+            v-if="!posterBusy && !posterPath"
+            class="secondary poster-retry"
+            @click="renderPoster"
+          >
+            重新生成海报
+          </button>
+          <button
+            v-if="albumPermissionDenied"
+            class="secondary poster-retry"
+            @click="openAlbumSettings"
+          >
+            打开相册权限设置
+          </button>
           <button
             class="primary lime"
             :disabled="posterBusy || shareBusy || saveBusy || !posterPath"
@@ -411,12 +549,20 @@ const retry = () => openReviewEntry({ report: report.value, industry: report.val
           >
             {{ shareBusy ? '正在打开分享…' : '分享到朋友圈 ↗' }}</button
           ><text class="poster-caption bottom">{{ shareHint }}</text>
-          <button class="save-secondary" :disabled="posterBusy || saveBusy || shareBusy || !posterPath" @click="save">
+          <button
+            class="save-secondary"
+            :disabled="posterBusy || saveBusy || shareBusy || !posterPath"
+            @click="save"
+          >
             {{ saveBusy ? '正在保存…' : '保存图片到本地' }}
           </button>
-          <text class="poster-caption bottom"
-            >{{entry?entry.label?.includes('仅本机')?'演示二维码仅供本机预览。':'扫码查看已授权的完整评估。':'当前为摘要海报，不含完整资料。'}}</text
-          >
+          <text class="poster-caption bottom">{{
+            entry
+              ? entry.label?.includes('仅本机')
+                ? '演示二维码仅供本机预览。'
+                : '扫码查看已授权的完整评估。'
+              : '当前为摘要海报，不含完整资料。'
+          }}</text>
         </view></view
       >
     </template>
@@ -430,6 +576,15 @@ const retry = () => openReviewEntry({ report: report.value, industry: report.val
 </template>
 
 <style scoped>
+.conclusion-toggle {
+  display: block;
+  min-height: 39px;
+  font-size: 12px;
+  color: #6c805d;
+  text-align: left;
+  width: 100%;
+  margin-top: 5px;
+}
 .report-preferences {
   display: flex;
   flex-wrap: wrap;
@@ -1015,17 +1170,55 @@ const retry = () => openReviewEntry({ report: report.value, industry: report.val
   margin-bottom: 12px;
 }
 @media (max-width: 360px) {
-  .score-card { padding: 16px; }
-  .score-number { font-size: 54px; letter-spacing: -3px; }
-  .score-unit { margin-left: 5px; }
-  .verdict-stamp { padding: 5px 7px; font-size: 13px; }
-  .investor-heading { flex-wrap: wrap; }
-  .investor-score { min-width: 40px; }
+  .score-card {
+    padding: 16px;
+  }
+  .score-number {
+    font-size: 54px;
+    letter-spacing: -3px;
+  }
+  .score-unit {
+    margin-left: 5px;
+  }
+  .verdict-stamp {
+    padding: 5px 7px;
+    font-size: 13px;
+  }
+  .investor-heading {
+    flex-wrap: wrap;
+  }
+  .investor-score {
+    min-width: 40px;
+  }
 }
-.report-page .share-section { border-top: 1px solid #dfe5d7; padding-top: 24px; margin-top: 24px; }
-.share-section-title { font-size: 18px; font-weight: 750; }
-.report-page .share-section .share-option { margin-top: 12px; }
-.report-page .share-section .share-rules { min-height: 44px; width: 100%; color: #2f684e; text-align: left; font-size: 12px; }
-.poster-dialog { max-height: calc(100vh - 48px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); overflow-y: auto; }
-.poster-dialog-heading { position: sticky; top: -17px; background: #f7f7f0; z-index: 2; padding: 3px 0; }
+.report-page .share-section {
+  border-top: 1px solid #dfe5d7;
+  padding-top: 24px;
+  margin-top: 24px;
+}
+.share-section-title {
+  font-size: 18px;
+  font-weight: 750;
+}
+.report-page .share-section .share-option {
+  margin-top: 12px;
+}
+.report-page .share-section .share-rules {
+  min-height: 44px;
+  width: 100%;
+  color: #2f684e;
+  text-align: left;
+  font-size: 12px;
+}
+.poster-dialog {
+  max-height: calc(100vh - 48px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow-y: auto;
+}
+.poster-dialog-heading {
+  position: sticky;
+  top: -17px;
+  background: #f7f7f0;
+  z-index: 2;
+  padding: 3px 0;
+}
 </style>

@@ -3,29 +3,33 @@ import { computed, ref } from 'vue';
 import { onLoad, onUnload, onShareAppMessage, onShareTimeline } from '@dcloudio/uni-app';
 import {
   DEFAULT_UNLOCK_FEN,
+  DEFAULT_PREFERENCES,
   INDUSTRY_IDS,
   ROUND_IDS,
-  PRICE_PRESETS_FEN,
-  decisionLabel,
-  formatPrice,
+  GIFTS,
+  getGift,
   getIndustry,
   getRound,
+  decisionLabel,
   shareIdSchema,
   readDemoScene,
-  PREFERENCE_IDS,
-  DEFAULT_PREFERENCES,
+  panelPreferencesSchema,
+  formatPrice,
+  publicDiagnosticSummary,
 } from '@pitchcoach/shared';
 import type {
   CommerceOrder,
+  GiftId,
   IndustryId,
   PrivateProjectPack,
   PublishedProject,
   RoundId,
   ViewerRole,
-  PreferenceId,
 } from '@pitchcoach/shared';
 import PageHeader from '@/components/PageHeader.vue';
 import PublicReport from '@/components/PublicReport.vue';
+import GiftIcon from '@/components/GiftIcon.vue';
+import GiftCelebration from '@/components/GiftCelebration.vue';
 import {
   createOrder,
   getAccess,
@@ -35,83 +39,84 @@ import {
   launchPayment,
 } from '@/lib/commerce-api';
 import { demoPrivatePack, demoProject, projectPath } from '@/lib/publication';
-
+import { SHARE_COVER } from '@/lib/share-entry';
 const project = ref<PublishedProject>(),
   pack = ref<PrivateProjectPack>(),
-  role = ref<ViewerRole>('supporter'),
+  role = ref<ViewerRole>('supporter');
+const busy = ref(false),
   error = ref(''),
-  busy = ref(false),
-  kind = ref<'unlock' | 'tip'>(),
-  tipAmount = ref<number>(888),
+  notice = ref(''),
+  details = ref(false),
+  feeDetails = ref(false),
+  contactOpen = ref(false);
+const kind = ref<'unlock' | 'gift'>(),
+  giftId = ref<GiftId>('rocket'),
   contact = ref(''),
   message = ref(''),
   contactConsent = ref(false),
   purchaseConsent = ref(false),
   checkoutBusy = ref(false),
   order = ref<CommerceOrder>(),
-  notice = ref(''),
-  isOwner = ref(false);
+  isOwner = ref(false),
+  celebration = ref<GiftId>();
+const demo = computed(() => project.value?.mode === 'demo'),
+  selectedGift = computed(() => getGift(giftId.value)!);
+const amount = computed(() =>
+  kind.value === 'unlock' ? project.value?.unlockPriceFen || 0 : selectedGift.value.amountFen,
+);
+const diagnosis = computed(() =>
+  project.value ? publicDiagnosticSummary(project.value.report) : undefined,
+);
 let disposed = false,
   requestKey = '',
-  requestFingerprint = '';
-const demo = computed(() => project.value?.mode === 'demo');
-const heading = computed(() => project.value?.report.projectName || '公开项目');
+  fingerprint = '',
+  celebrationTimer: ReturnType<typeof setTimeout> | undefined;
 const publicPath = computed(() =>
-  !project.value
-    ? '/pages/index/index'
-    : demo.value
-      ? projectPath({
-          reportId: '',
-          projectId: project.value.id,
-          example: project.value.report.industry,
-          round: project.value.report.round,
-          priceFen: project.value.unlockPriceFen,
-          anonymous: project.value.anonymous,
-          preferences: project.value.report.preferences,
-          unlockEnabled: project.value.unlockEnabled,
-          tipsEnabled: project.value.tipsEnabled,
-        })
-      : `/pages/project/index?share=${project.value.id}`,
+  project.value
+    ? projectPath({
+        reportId: '',
+        projectId: project.value.id,
+        example: demo.value ? project.value.report.industry : undefined,
+        round: project.value.report.round,
+        priceFen: project.value.unlockPriceFen,
+        anonymous: project.value.anonymous,
+        preferences: project.value.report.preferences,
+        unlockEnabled: project.value.unlockEnabled,
+        tipsEnabled: project.value.tipsEnabled,
+      })
+    : '/pages/index/index',
 );
 onLoad(async (options) => {
   busy.value = true;
   try {
-    const scene = options?.scene ? decodeURIComponent(options.scene) : undefined;
-    const demoScene = scene ? readDemoScene(scene) : undefined;
-    if (demoScene)
+    const scene = options?.scene ? decodeURIComponent(options.scene) : undefined,
+      example = scene ? readDemoScene(scene) : undefined;
+    if (example)
       project.value = demoProject(
-        demoScene.industry,
-        demoScene.round,
-        demoScene.priceFen,
-        demoScene.anonymous,
-        demoScene.preferences,
-        demoScene,
+        example.industry,
+        example.round,
+        example.priceFen,
+        example.anonymous,
+        example.preferences,
+        example,
       );
-    else if (options?.share || (scene && scene !== 'demo')) {
-      const id = options?.share || scene!;
-      shareIdSchema.parse(id);
-      project.value = await getProject(id);
-    } else {
+    else if (options?.share || (scene && scene !== 'demo'))
+      project.value = await getProject(shareIdSchema.parse(options?.share || scene));
+    else {
       const industry = INDUSTRY_IDS.includes(options?.example as IndustryId)
-        ? (options!.example as IndustryId)
-        : 'ai';
-      const round = ROUND_IDS.includes(options?.round as RoundId)
-        ? (options!.round as RoundId)
-        : 'angel';
-      const price = Number(options?.price || DEFAULT_UNLOCK_FEN);
-      const selected = options?.preferences?.split(',') as PreferenceId[] | undefined;
-      const preferences =
-        selected?.length === 3 &&
-        new Set(selected).size === 3 &&
-        selected.every((id) => PREFERENCE_IDS.includes(id))
-          ? selected
-          : DEFAULT_PREFERENCES;
+          ? (options!.example as IndustryId)
+          : 'ai',
+        round = ROUND_IDS.includes(options?.round as RoundId)
+          ? (options!.round as RoundId)
+          : 'angel';
+      const price = Number(options?.price || DEFAULT_UNLOCK_FEN),
+        preferences = panelPreferencesSchema.safeParse(options?.preferences?.split(','));
       project.value = demoProject(
         industry,
         round,
-        Number.isSafeInteger(price) && price >= 1 && price <= 9999999 ? price : DEFAULT_UNLOCK_FEN,
+        Number.isSafeInteger(price) && price > 0 && price <= 9999999 ? price : DEFAULT_UNLOCK_FEN,
         options?.anonymous !== '0',
-        preferences,
+        preferences.success ? preferences.data : DEFAULT_PREFERENCES,
         { unlockEnabled: options?.unlock !== '0', tipsEnabled: options?.tips !== '0' },
       );
     }
@@ -123,75 +128,88 @@ onLoad(async (options) => {
 });
 onUnload(() => {
   disposed = true;
+  if (celebrationTimer) clearTimeout(celebrationTimer);
 });
 onShareAppMessage(() => ({
-  title: `${demo.value ? '虚构示例 · ' : ''}一份敢把红旗摆出来的融资评估`,
+  title: '这份项目评估，把难题摆上桌。',
   path: publicPath.value,
+  imageUrl: SHARE_COVER,
 }));
 onShareTimeline(() => ({
-  title: '这份融资评估，把最难的问题摆上桌。',
+  title: '好项目，经得起追问。',
   query: publicPath.value.split('?')[1] || '',
+  imageUrl: SHARE_COVER,
 }));
 function chooseRole(value: ViewerRole) {
   role.value = value;
   kind.value = undefined;
-  purchaseConsent.value = false;
   error.value = '';
 }
-function openCheckout(value: 'unlock' | 'tip') {
-  kind.value = value;
-  purchaseConsent.value = false;
-  contactConsent.value = false;
-  error.value = '';
-  notice.value = '';
-  order.value = undefined;
-  requestKey = '';
-}
-function uuid() {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (value) => {
-    const n = Math.floor(Math.random() * 16);
-    return (value === 'x' ? n : (n & 3) | 8).toString(16);
-  });
-}
-async function inspectAccess() {
-  if (!project.value) return;
-  if (demo.value) {
-    pack.value = demoPrivatePack(project.value.report.industry);
-    notice.value = '已体验虚构资料展示，未发生付款。';
+function checkout(value: 'unlock' | 'gift', gift?: GiftId) {
+  if (checkoutBusy.value) return;
+  if (
+    order.value?.status === 'pending' &&
+    order.value.kind === value &&
+    (value === 'unlock' || order.value.gift?.id === gift)
+  ) {
+    notice.value = '先核对刚才的订单，勿重复付款。';
+    void check();
     return;
   }
+  kind.value = value;
+  contact.value = '';
+  message.value = '';
+  notice.value = '';
+  if (gift) giftId.value = gift;
+  purchaseConsent.value = false;
+  contactConsent.value = false;
+  contactOpen.value = false;
+  error.value = '';
+  feeDetails.value = false;
+  requestKey = '';
+  order.value = undefined;
+}
+function celebrate(id: GiftId) {
+  if (celebrationTimer) clearTimeout(celebrationTimer);
+  celebration.value = id;
+  celebrationTimer = setTimeout(() => (celebration.value = undefined), 2200);
+}
+async function access() {
+  if (!project.value) return;
   try {
     busy.value = true;
-    const access = await getAccess(project.value.id);
-    isOwner.value = access.isOwner;
-    pack.value = access.privatePack;
-    if (!access.unlocked) notice.value = '当前微信用户尚未解锁，可以在“我的购买”核对已有订单。';
+    const result = await getAccess(project.value.id);
+    isOwner.value = result.isOwner;
+    pack.value = result.privatePack;
+    if (!result.unlocked) notice.value = '尚未解锁，可到购买记录中核对。';
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '权限核对失败';
+    error.value = cause instanceof Error ? cause.message : '访问核对失败';
   } finally {
     busy.value = false;
   }
 }
 async function syncOrder() {
-  if (!order.value) return;
-  const checked = await getOrder(order.value.id);
-  order.value = checked;
-  if (checked.status === 'paid') {
-    notice.value =
-      checked.kind === 'unlock'
-        ? '微信支付已核实，资料已开放。'
-        : '微信支付已核实，感谢支持。联系方式仅提供给项目方。';
-    if (checked.kind === 'unlock') pack.value = await getOrderMaterial(checked.id);
+  if (!order.value) return false;
+  const current = await getOrder(order.value.id);
+  order.value = current;
+  if (current.status === 'paid') {
+    if (current.kind === 'unlock') {
+      pack.value = await getOrderMaterial(current.id);
+      notice.value = '付款已核实，资料已开放。';
+    } else {
+      notice.value = `${current.gift?.name || '礼物'}已送达，感谢支持。`;
+      if (current.gift) celebrate(current.gift.id);
+    }
     kind.value = undefined;
     return true;
   }
-  if (checked.status === 'refunded') {
+  if (current.status === 'refunded') {
     pack.value = undefined;
-    notice.value = '该订单已退款，解锁权限已撤销。';
+    notice.value = '订单已退款，后续资料访问已关闭。';
     return true;
   }
-  if (checked.status === 'closed') {
-    notice.value = '该订单已关闭，未开放资料。';
+  if (current.status === 'closed') {
+    notice.value = '订单已关闭。';
     return true;
   }
   return false;
@@ -206,11 +224,17 @@ async function check() {
     checkoutBusy.value = false;
   }
 }
+function uuid() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const n = Math.floor(Math.random() * 16);
+    return (c === 'x' ? n : (n & 3) | 8).toString(16);
+  });
+}
 async function pay() {
   if (!project.value || !kind.value || checkoutBusy.value) return;
   error.value = '';
   if (!purchaseConsent.value) {
-    error.value = '请先确认本次购买或支持说明。';
+    error.value = '请先确认本次购买说明。';
     return;
   }
   if (contact.value && !contactConsent.value) {
@@ -220,17 +244,20 @@ async function pay() {
   checkoutBusy.value = true;
   try {
     if (demo.value) {
-      if (kind.value === 'unlock') pack.value = demoPrivatePack(project.value.report.industry);
-      notice.value =
-        kind.value === 'unlock'
-          ? '演示解锁已完成，未扣款，展示的资料与联系方式均为虚构。'
-          : '演示打赏已完成，未扣款，也未上传联系方式。';
+      if (kind.value === 'unlock') {
+        pack.value = demoPrivatePack(project.value.report.industry);
+        notice.value = '已体验解锁。资料与联系人均为虚构，未扣款。';
+      } else {
+        notice.value = `演示 · ${selectedGift.value.name}已送达，未扣款，也未上传联系方式。`;
+        celebrate(giftId.value);
+      }
       kind.value = undefined;
       return;
     }
-    const body = {
+    const input = {
       kind: kind.value,
-      amountFen: kind.value === 'unlock' ? project.value.unlockPriceFen : tipAmount.value,
+      ...(kind.value === 'gift' ? { giftId: giftId.value } : {}),
+      amountFen: amount.value,
       expectedRevision: project.value.revision,
       role: role.value,
       contact: contact.value,
@@ -238,157 +265,214 @@ async function pay() {
       shareContactConsent: contactConsent.value,
       purchaseConsent: true as const,
     };
-    const fingerprint = JSON.stringify(body);
-    if (!requestKey || fingerprint !== requestFingerprint) {
+    const next = JSON.stringify(input);
+    if (!requestKey || next !== fingerprint) {
       requestKey = uuid();
-      requestFingerprint = fingerprint;
+      fingerprint = next;
     }
-    const result = await createOrder(project.value.id, { ...body, idempotencyKey: requestKey });
+    const result = await createOrder(project.value.id, { ...input, idempotencyKey: requestKey });
     order.value = result.order;
     if (result.order.status === 'paid') {
       await syncOrder();
       return;
     }
-    if (!result.payment) throw new Error('该订单暂不可付款，请核对订单状态。');
+    if (!result.payment) throw new Error('请先核对订单状态。');
     const completed = await launchPayment(result.payment);
     if (!completed) {
-      notice.value = '你已取消支付；订单结果仍以微信核验为准，可随时在我的购买中查看。';
+      notice.value = '支付已取消，最终结果可在购买记录中核对。';
       await syncOrder();
       return;
     }
-    notice.value = '正在向微信核实支付结果，请勿重复付款。';
-    for (let i = 0; i < 8 && !disposed; i++) {
+    notice.value = '正在核实付款，请勿重复支付…';
+    for (let attempt = 0; attempt < 8 && !disposed; attempt++) {
       if (await syncOrder()) return;
       await new Promise((resolve) => setTimeout(resolve, 1200));
     }
-    notice.value = '微信支付结果仍在确认，请稍后核对订单或前往“我的购买”，不要重复付款。';
+    notice.value = '订单仍在核对，可稍后查看购买记录。';
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '未完成支付，请核对订单';
+    error.value = cause instanceof Error ? cause.message : '本次操作未完成';
   } finally {
     checkoutBusy.value = false;
   }
 }
-const startEvaluation = () =>
-  project.value &&
-  uni.navigateTo({
-    url: `/pages/pitch/index?industry=${project.value.report.industry}&round=${project.value.report.round}${demo.value ? '' : `&referral=${project.value.id}`}`,
-  });
+function startEvaluation() {
+  if (project.value)
+    uni.navigateTo({
+      url: `/pages/pitch/index?industry=${project.value.report.industry}&round=${project.value.report.round}${demo.value ? '' : `&referral=${project.value.id}`}`,
+    });
+}
 </script>
 <template>
-  <view class="page compact project-page"
-    ><PageHeader back label="公开项目评估" />
-    <view v-if="busy && !project" class="notice">正在读取公开评估…</view
-    ><view v-if="error" class="error-box" role="alert">{{ error }}</view>
+  <view class="page compact public-page">
+    <PageHeader back label="公开评估" /><view
+      v-if="error && !kind"
+      class="error-box"
+      role="alert"
+      >{{ error }}</view
+    ><view v-if="busy && !project" class="notice">正在打开报告…</view>
     <template v-if="project">
-      <view class="public-label">{{
-        demo ? '虚构演示 · 未真实收款' : '项目方授权公开 · AI 生成评估'
-      }}</view
-      ><view class="project-title">{{ heading }}</view
-      ><text class="project-meta"
-        >{{ getIndustry(project.report.industry).name }} /
-        {{ getRound(project.report.round).name }}</text
+      <view class="public-meta"
+        ><text class="pill" :class="{ demo }">{{ demo ? '虚构示例' : '授权公开' }}</text
+        ><text
+          >{{ getIndustry(project.report.industry).name }} ·
+          {{ getRound(project.report.round).name }}</text
+        ></view
       >
-      <view class="public-score"
-        ><text class="score mono">{{ project.report.score ?? '—' }}</text
-        ><text>/100</text><text class="verdict">{{ decisionLabel(project.report) }}</text></view
+      <view class="project-title">{{ project.report.projectName }}</view>
+      <view class="score-panel"
+        ><view
+          ><text class="score mono">{{ project.report.score ?? '—' }}</text
+          ><text class="score-unit">/100</text></view
+        ><view class="verdict-label">{{ decisionLabel(project.report) }}</view></view
       >
-      <view class="project-quote">“{{ project.report.headline }}”</view
-      ><text class="project-summary">{{ project.report.summary }}</text
-      ><view
-        class="decision-line"
-        v-for="reason in project.report.decisionReasons || []"
-        :key="reason"
-        >{{ reason }}</view
+      <view class="project-headline">{{ project.report.headline }}</view
+      ><text class="risk-line">{{ diagnosis?.counts }}</text>
+      <button class="quiet-link" :aria-expanded="details" @click="details = !details">
+        结论依据 {{ details ? '−' : '+' }}</button
+      ><view v-if="details" class="decision-details"
+        ><text v-for="reason in project.report.decisionReasons" :key="reason">{{
+          reason
+        }}</text></view
       >
-      <view class="viral-card"
-        ><view class="viral-title">看别人的红旗，也照照自己的。</view
-        ><text>把你的项目交给 3 位 AI 投资人，先问透，再去路演。</text
-        ><button class="primary lime" @click="startEvaluation">
-          也给我的项目做一次评估 ↗
-        </button></view
-      >
-      <view class="complete-label">完整评估 · 免费查看</view
+      <view class="memo-heading">完整评估 <text>免费查看</text></view
       ><PublicReport :report="project.report" />
-      <view class="participant-panel"
-        ><view class="participant-title">你想怎样参与？</view
-        ><view class="role-tabs"
+      <view class="participation surface">
+        <view class="participation-title">为这个项目，添一点可能。</view>
+        <view class="role-tabs"
           ><button
             v-for="item in [
-              { id: 'supporter', label: '我来围观' },
+              { id: 'supporter', label: '送礼物' },
               { id: 'entrepreneur', label: '我也在创业' },
               { id: 'investor', label: '我是投资人' },
             ]"
             :key="item.id"
-            class="role-button"
             :class="{ active: role === item.id }"
             @click="chooseRole(item.id as ViewerRole)"
           >
             {{ item.label }}
           </button></view
-        ><text class="participant-help">角色由用户自行声明，不代表平台核验身份或资质。</text>
-        <template v-if="role === 'investor' && project.unlockEnabled && !pack"
-          ><view class="offer-title">完整资料 + 项目方联系方式</view
-          ><text class="participant-help"
-            >内容由项目方单独授权提供，包含完整项目正文及联系人。购买不会获得股权、投资收益或任何投资承诺。</text
-          ><view class="offer-price">¥ {{ formatPrice(project.unlockPriceFen) }}</view
-          ><button
-            class="primary lime"
-            :disabled="!demo && !project.purchasableUnlock"
-            @click="openCheckout('unlock')"
-          >
-            {{ demo ? '体验资料解锁（不扣款）' : '付费解锁完整资料与联系渠道' }}</button
-          ><text v-if="!demo && !project.purchasableUnlock" class="participant-help"
-            >该项目或该价位尚未启用收款，暂不扣款。</text
-          ><button class="text-action" @click="inspectAccess">
-            已购买 / 我是项目方，核对访问权限 ↗
-          </button></template
         >
-        <template v-if="role === 'supporter' && project.tipsEnabled"
-          ><view class="offer-title">给这个项目一点支持</view
-          ><text class="participant-help"
-            >可自愿留下联系方式，让项目方考虑回馈。打赏不对应股权、收益或确定回馈。</text
-          ><view class="tip-grid"
+        <template v-if="role === 'supporter'"
+          ><view v-if="project.tipsEnabled" class="gift-grid"
             ><button
-              v-for="fen in PRICE_PRESETS_FEN"
-              :key="fen"
-              class="tip-choice"
-              :class="{ selected: tipAmount === fen }"
-              :disabled="!demo && !project.purchasableTipPricesFen.includes(fen)"
-              @click="
-                tipAmount = fen;
-                openCheckout('tip');
-              "
+              v-for="gift in GIFTS"
+              :key="gift.id"
+              class="gift-option"
+              :aria-label="`${gift.name} ¥${formatPrice(gift.amountFen)}`"
+              :disabled="!demo && !project.purchasableTipPricesFen.includes(gift.amountFen)"
+              @click="checkout('gift', gift.id)"
             >
-              ¥ {{ formatPrice(fen) }}
+              <GiftIcon :gift="gift.id" /><text class="gift-name">{{ gift.name }}</text
+              ><text class="gift-price">¥{{ formatPrice(gift.amountFen) }}</text>
             </button></view
-          ><text v-if="!demo && !project.paymentAvailable" class="participant-help"
-            >收款尚未启用，四档金额仅供查看，暂不扣款。</text
+          ><text class="small-note">{{
+            !project.tipsEnabled
+              ? '项目方暂未开启礼物。'
+              : demo
+                ? '演示礼物，不会扣款。'
+                : !project.paymentAvailable
+                  ? '礼物收款待配置。'
+                  : '礼物是自愿支持，不对应股权或回报。'
+          }}</text></template
+        >
+        <template v-else-if="role === 'investor'"
+          ><template v-if="project.unlockEnabled && !pack"
+            ><view class="offer-name">完整资料 · 联系项目方</view
+            ><text class="small-note">项目方单独授权的正文与联系渠道。</text
+            ><view class="unlock-price">¥{{ formatPrice(project.unlockPriceFen) }}</view
+            ><button
+              class="primary lime"
+              :disabled="!demo && !project.purchasableUnlock"
+              @click="checkout('unlock')"
+            >
+              {{ demo ? '体验资料解锁' : '解锁完整资料' }}</button
+            ><text class="small-note">{{
+              demo
+                ? '虚构资料，不扣款。'
+                : !project.purchasableUnlock
+                  ? '该价位尚未开放收款。'
+                  : '身份由本人声明，购买不代表投资。'
+            }}</text
+            ><button v-if="!demo" class="quiet-link" @click="access">
+              已购买？查看资料 →
+            </button></template
+          ><text v-else-if="!project.unlockEnabled" class="small-note"
+            >项目方暂未开放资料解锁。</text
           ></template
         >
-        <template v-if="role === 'entrepreneur'"
-          ><view class="offer-title">你的项目，经得起这几问吗？</view
-          ><button class="primary lime" @click="startEvaluation">
-            上传我的资料，开始评估 ↗
-          </button></template
+        <template v-else
+          ><view class="offer-name">也让你的项目，听听真话。</view
+          ><button class="primary lime" @click="startEvaluation">评估我的项目 ↗</button></template
         >
-        <view v-if="kind" class="checkout-card"
-          ><view class="offer-title"
-            >{{ kind === 'unlock' ? '确认解锁资料' : '确认自愿打赏' }} · ¥{{
-              formatPrice(kind === 'unlock' ? project.unlockPriceFen : tipAmount)
-            }}</view
-          ><text class="participant-help"
-            >平台统一收款，扣除退款后的已核实实收按笔收取 5% 服务费；项目方份额为其余
-            95%，渠道费用另行对账。本页金额即本次支付金额，不额外加收服务费。</text
+      </view>
+      <view v-if="notice" class="notice" role="status">{{ notice }}</view
+      ><button v-if="order" class="quiet-link" :disabled="checkoutBusy" @click="check">
+        核对订单状态 →
+      </button>
+      <view v-if="pack" class="private-material surface"
+        ><view class="memo-heading">{{ demo ? '虚构资料 · 未扣款' : '已解锁资料' }}</view
+        ><text class="material-text">{{ pack.overview }}</text
+        ><view class="contact-block"
+          ><text>{{ pack.contactName }}</text
+          ><text
+            >{{ { wechat: '微信', phone: '电话', email: '邮箱' }[pack.contactChannel] }} ·
+            {{ pack.contactValue }}</text
+          ></view
+        ><text class="small-note">联系信息仅用于本项目沟通。</text></view
+      >
+      <view class="viral-card"
+        ><text class="viral-title">好项目，经得起追问。</text
+        ><text class="small-note">三位 AI 教练，帮你找到下一步。</text
+        ><button class="primary lime" @click="startEvaluation">评估我的项目 ↗</button></view
+      >
+      <button
+        v-if="isOwner"
+        class="quiet-link"
+        @click="uni.navigateTo({ url: `/pages/project-owner/index?share=${project!.id}` })"
+      >
+        管理公开项目 →</button
+      ><button class="quiet-link" @click="uni.navigateTo({ url: '/pages/commerce/index' })">
+        我的项目与礼物记录 →
+      </button>
+    </template>
+    <button
+      v-if="!project && !busy"
+      class="secondary"
+      @click="uni.reLaunch({ url: '/pages/index/index' })"
+    >
+      返回首页
+    </button>
+    <view
+      v-if="kind && project"
+      class="checkout-backdrop"
+      @click="!checkoutBusy && (kind = undefined)"
+      ><view class="checkout-sheet" @click.stop>
+        <view class="sheet-top"
+          ><text>{{ kind === 'gift' ? '把心意送上路' : '确认资料解锁' }}</text
+          ><button aria-label="关闭确认" :disabled="checkoutBusy" @click="kind = undefined">
+            ×
+          </button></view
+        >
+        <view v-if="kind === 'gift'" class="gift-detail"
+          ><GiftIcon :gift="giftId" active large /><view>{{ selectedGift.name }}</view
+          ><text>{{ selectedGift.caption }}</text></view
+        >
+        <view class="checkout-price"
+          >¥{{ formatPrice(amount) }}
+          <text>{{ demo ? '演示，不扣款' : '本次实际支付' }}</text></view
+        >
+        <button class="quiet-link" :aria-expanded="contactOpen" @click="contactOpen = !contactOpen">
+          留言与联系方式 <text>选填 {{ contactOpen ? '−' : '+' }}</text>
+        </button>
+        <view v-if="contactOpen" class="contact-fields"
           ><input
             v-model="contact"
-            class="checkout-input"
             maxlength="128"
-            placeholder="自愿留下微信、电话或邮箱（可不填）"
+            placeholder="微信、电话或邮箱（选填）"
           /><textarea
             v-model="message"
-            class="checkout-message"
             maxlength="300"
-            placeholder="想对项目方说的话（可不填）"
+            placeholder="想对项目方说的话（选填）"
           /><button
             v-if="contact"
             class="consent-choice"
@@ -396,271 +480,382 @@ const startEvaluation = () =>
             :aria-checked="contactConsent"
             @click="contactConsent = !contactConsent"
           >
-            {{ contactConsent ? '☑' : '☐' }}
-            同意将这条联系方式仅提供给项目方，用于本项目沟通，不公开展示。</button
-          ><button
-            class="consent-choice"
-            role="checkbox"
-            :aria-checked="purchaseConsent"
-            @click="purchaseConsent = !purchaseConsent"
-          >
-            {{ purchaseConsent ? '☑' : '☐' }}
-            {{
-              kind === 'unlock'
-                ? '我了解购买的是项目方提供的资料访问与联系渠道，不代表投资、收益、会面或回复承诺。'
-                : '我了解这是自愿支持，不获得股权、收益或确定回馈，项目方可自愿联系。'
-            }}</button
-          ><button class="primary lime" :disabled="checkoutBusy" @click="pay">
-            {{
-              checkoutBusy
-                ? '正在核对订单…'
-                : demo
-                  ? '确认体验（不扣款）'
-                  : `确认支付 ¥${formatPrice(kind === 'unlock' ? project.unlockPriceFen : tipAmount)}`
-            }}</button
-          ><button class="text-action" :disabled="checkoutBusy" @click="kind = undefined">
-            暂不参与
+            {{ contactConsent ? '☑' : '☐' }} 同意将联系方式仅提供给项目方
           </button></view
         >
-        <view v-if="notice" class="notice">{{ notice }}</view
-        ><button v-if="order" class="secondary" :disabled="checkoutBusy" @click="check">
-          核对这笔订单的支付状态 ↗
+        <button
+          class="consent-choice"
+          role="checkbox"
+          :aria-checked="purchaseConsent"
+          @click="purchaseConsent = !purchaseConsent"
+        >
+          {{ purchaseConsent ? '☑' : '☐' }}
+          {{
+            kind === 'gift'
+              ? '我了解礼物为自愿支持，无股权或回报承诺'
+              : '我了解购买的是资料访问，无投资或回复承诺'
+          }}
         </button>
-      </view>
-      <view v-if="pack" class="private-material"
-        ><view class="participant-title">{{
-          demo ? '虚构演示资料' : '你有权查看的完整项目资料'
-        }}</view
-        ><text class="material-text">{{ pack.overview }}</text
-        ><view class="contact-card"
-          ><view>{{ pack.contactName }}</view
-          ><text
-            >{{ { wechat: '微信', phone: '电话', email: '邮箱' }[pack.contactChannel] }}：{{
-              pack.contactValue
-            }}</text
-          ></view
-        ><text class="participant-help"
-          >请仅用于与本项目有关的沟通，勿转售或公开传播联系方式。</text
-        ></view
-      >
-      <button
-        v-if="isOwner"
-        class="secondary"
-        @click="uni.navigateTo({ url: `/pages/project-owner/index?share=${project!.id}` })"
-      >
-        管理这个公开项目 ↗</button
-      ><button class="text-action" @click="uni.navigateTo({ url: '/pages/commerce/index' })">
-        我的公开项目与购买记录 ↗
-      </button> </template
-    ><button
-      v-if="!project && !busy"
-      class="primary lime"
-      @click="uni.reLaunch({ url: '/pages/index/index' })"
+        <button
+          class="quiet-link fee-link"
+          :aria-expanded="feeDetails"
+          @click="feeDetails = !feeDetails"
+        >
+          {{ kind === 'gift' ? '礼物与收款说明' : '购买与收款说明' }}
+          {{ feeDetails ? '−' : '+' }}</button
+        ><text v-if="feeDetails" class="small-note"
+          >{{
+            kind === 'gift' ? '礼物为数字展示，无实物配送。' : '购买的是项目方提供的资料访问。'
+          }}平台统一收款，按退款后已核实实收收取 5%
+          服务费，其余为项目方份额；微信渠道费用和结算另行核对。支持者可自愿留联，项目方可考虑回馈。</text
+        >
+        <view v-if="error" class="error-box" role="alert">{{ error }}</view
+        ><button class="primary lime" :disabled="checkoutBusy" @click="pay">
+          {{
+            checkoutBusy
+              ? '正在核对…'
+              : demo
+                ? kind === 'gift'
+                  ? `体验送${selectedGift.name}（不扣款）`
+                  : '体验解锁（不扣款）'
+                : kind === 'gift'
+                  ? `送出${selectedGift.name} · ¥${formatPrice(amount)}`
+                  : `确认支付 · ¥${formatPrice(amount)}`
+          }}
+        </button>
+      </view></view
     >
-      回到融资教练
-    </button>
+    <GiftCelebration v-if="celebration" :gift="celebration" :demo="demo" />
   </view>
 </template>
 <style scoped>
-.public-label {
-  font-size: 10px;
-  color: #9b875b;
-  background: #f4efdc;
-  padding: 8px 11px;
-  border-radius: 7px;
-  margin: 10px 0 16px;
+.public-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  color: #788272;
+  margin: 6px 0 18px;
 }
 .project-title {
   font-size: 29px;
-  font-weight: 800;
+  line-height: 1.4;
+  font-weight: 760;
+  letter-spacing: -0.8px;
   overflow-wrap: anywhere;
 }
-.project-meta {
-  font-size: 11px;
-  color: #8b9b7c;
-}
-.public-score {
+.score-panel {
   display: flex;
-  gap: 10px;
-  align-items: baseline;
-  background: #263e32;
-  color: #a8c194;
-  border-radius: 16px;
-  padding: 18px 20px;
-  margin: 20px 0;
+  align-items: center;
+  justify-content: space-between;
+  background: #243c31;
+  color: #c1d0b1;
+  padding: 20px 24px;
+  border-radius: 22px;
+  margin: 23px 0;
 }
 .score {
-  font-size: 65px;
+  font-size: 70px;
+  line-height: 1;
   color: #d9f18a;
-  line-height: 1.2;
+  font-weight: 500;
 }
-.verdict {
-  margin-left: auto;
-  color: #e2d3ae;
-  font-size: 15px;
+.score-unit {
+  font-size: 13px;
+  margin-left: 10px;
 }
-.project-quote {
-  font-size: 22px;
-  font-weight: 700;
-  line-height: 1.7;
-  margin: 22px 0 14px;
+.verdict-label {
+  border: 1px solid #809378;
+  border-radius: 30px;
+  padding: 5px 12px;
+  font-size: 13px;
+  color: #e9efdf;
 }
-.project-summary,
-.decision-line {
+.project-headline {
+  font-size: 21px;
+  line-height: 1.6;
+  font-weight: 650;
+  letter-spacing: -0.3px;
+}
+.risk-line {
   display: block;
-  font-size: 11px;
-  color: #849477;
+  font-size: 12px;
+  margin-top: 12px;
+  color: #91634a;
+}
+.quiet-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 42px;
+  color: #537449;
+  font-size: 12px;
+  gap: 9px;
+  text-align: center;
+}
+.decision-details {
+  background: #edf1e7;
+  padding: 14px;
+  border-radius: 12px;
+  margin-bottom: 18px;
+}
+.decision-details > text {
+  display: block;
+  font-size: 12px;
   line-height: 1.9;
+  color: #6b7962;
+  margin: 7px 0;
 }
-.decision-line {
-  margin: 6px 0;
-}
-.viral-card {
-  background: #e7eddb;
-  border-radius: 14px;
-  padding: 19px;
-  margin: 25px 0;
-}
-.viral-title {
+.memo-heading {
   font-size: 17px;
   font-weight: 700;
-  color: #3c5b42;
+  margin: 26px 0 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
-.viral-card > text {
-  display: block;
+.memo-heading > text {
   font-size: 11px;
-  color: #80906d;
-  margin: 8px 0 16px;
-  line-height: 1.9;
+  font-weight: 400;
+  color: #819175;
 }
-.complete-label {
-  font-size: 15px;
-  font-weight: 700;
-  color: #3e5c43;
-  margin-top: 30px;
-}
-.participant-panel {
-  border: 1px solid #dbe3ce;
-  padding: 18px;
-  border-radius: 15px;
+.participation {
   margin: 20px 0;
+  padding: 21px;
 }
-.participant-title {
+.participation-title {
   font-size: 18px;
+  line-height: 1.6;
   font-weight: 700;
-  color: #35563f;
-  margin-bottom: 16px;
+  letter-spacing: -0.3px;
 }
 .role-tabs {
   display: flex;
-  gap: 7px;
+  gap: 4px;
+  background: #f0f3e9;
+  border-radius: 12px;
+  padding: 4px;
+  margin: 16px 0 23px;
 }
-.role-button {
+.role-tabs > button {
   flex: 1;
-  padding: 10px 3px;
-  font-size: 11px;
-  border: 1px solid #d8e1ca;
-  border-radius: 8px;
-  color: #80966d;
+  min-height: 40px;
+  font-size: 12px;
+  border-radius: 9px;
+  color: #7d8974;
 }
-.role-button.active {
-  background: #e4edcf;
-  color: #385b40;
-  border-color: #78955b;
+.role-tabs > button.active {
+  background: #fff;
+  color: #2d553e;
+  box-shadow: 0 2px 8px #243b3009;
 }
-.participant-help {
+.gift-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 9px;
+}
+.gift-option {
+  min-width: 0;
+  text-align: center;
+  transition: transform 0.18s ease;
+}
+.gift-option:active {
+  transform: translateY(-4px);
+}
+.gift-name {
+  display: block;
+  font-size: 13px;
+  font-weight: 650;
+  margin-top: 11px;
+}
+.gift-price {
   display: block;
   font-size: 10px;
-  color: #8a997a;
-  line-height: 1.9;
-  margin: 12px 0;
+  color: #8a967f;
+  margin-top: 3px;
 }
-.offer-title {
-  font-size: 15px;
-  font-weight: 700;
-  color: #4b6847;
-  margin-top: 20px;
-  line-height: 1.8;
-}
-.offer-price {
-  font-size: 33px;
-  color: #426b43;
-  margin: 12px 0;
-}
-.text-action {
-  font-size: 11px;
-  color: #698a55;
-  text-align: center;
-  padding: 16px 0;
-  width: 100%;
-}
-.tip-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 9px;
-  margin: 16px 0;
-}
-.tip-choice {
-  border: 1px solid #d3dfbf;
-  border-radius: 9px;
-  padding: 13px 2px;
-  font-size: 17px;
-  color: #607f4e;
-}
-.tip-choice.selected {
-  background: #e3edce;
-  border-color: #8ba66a;
-  color: #35583d;
-}
-.checkout-card {
-  border-top: 1px solid #dce4ce;
-  margin-top: 24px;
-  padding-top: 2px;
-}
-.checkout-input,
-.checkout-message {
-  width: 100%;
-  padding: 12px;
-  background: #f0f3e9;
-  border-radius: 8px;
-  box-sizing: border-box;
+.small-note {
+  display: block;
+  color: #84917a;
   font-size: 12px;
-  color: #4d6746;
+  line-height: 1.85;
   margin: 12px 0;
-  min-height: 45px;
 }
-.checkout-message {
-  height: 100px;
+.offer-name {
+  font-size: 19px;
+  font-weight: 700;
+  margin: 13px 0;
 }
-.consent-choice {
-  font-size: 11px;
-  color: #5e7a50;
-  line-height: 1.9;
-  text-align: left;
-  width: 100%;
-  padding: 12px 0;
+.unlock-price {
+  font-size: 34px;
+  margin: 10px 0 18px;
+  letter-spacing: -1px;
 }
 .private-material {
-  padding: 20px;
-  background: #eaf0df;
-  border-radius: 14px;
-  margin: 22px 0;
+  margin: 20px 0;
+  background: #eef3e8;
+}
+.private-material .memo-heading {
+  margin: 0 0 16px;
 }
 .material-text {
-  display: block;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
   font-size: 12px;
   line-height: 2;
-  color: #506f48;
+  display: block;
+}
+.contact-block {
+  background: #fff;
+  border-radius: 12px;
+  padding: 15px;
+  margin: 20px 0;
+}
+.contact-block > text {
+  display: block;
+  font-size: 12px;
   overflow-wrap: anywhere;
 }
-.contact-card {
-  padding: 15px;
-  border-radius: 9px;
-  background: #fafbf5;
-  margin: 20px 0;
-  color: #44663e;
-  font-size: 13px;
-  overflow-wrap: anywhere;
+.contact-block > text:first-child {
+  font-weight: 700;
+  margin-bottom: 5px;
+}
+.viral-card {
+  padding: 24px;
+  background: #eaf0df;
+  border-radius: 20px;
+  margin: 25px 0 10px;
+}
+.viral-title {
+  font-size: 20px;
+  font-weight: 720;
+}
+.viral-card .primary {
+  margin-top: 18px;
+}
+.checkout-backdrop {
+  position: fixed;
+  inset: 0;
+  background: #1a3026a8;
+  z-index: 100;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px;
+}
+.checkout-sheet {
+  background: #fbfcf6;
+  width: 100%;
+  max-width: 520px;
+  border-radius: 24px;
+  padding: 22px 24px calc(22px + env(safe-area-inset-bottom));
+  max-height: 88vh;
+  overflow-y: auto;
+  animation: sheet-in 0.25s ease-out;
+}
+.sheet-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 17px;
+  font-weight: 700;
+}
+.sheet-top > button {
+  font-size: 25px;
+  width: 38px;
+  height: 38px;
+}
+.gift-detail {
+  text-align: center;
+  margin: 15px 0 9px;
+}
+.gift-detail > view:nth-child(2) {
+  font-size: 24px;
+  font-weight: 750;
+  margin: 17px 0 4px;
+}
+.gift-detail > text {
+  font-size: 12px;
+  color: #7d8b71;
+}
+.checkout-price {
+  text-align: center;
+  font-size: 28px;
+  margin: 16px 0;
+}
+.checkout-price > text {
+  display: block;
+  font-size: 11px;
+  color: #89947e;
+  letter-spacing: 0;
+}
+.contact-fields input,
+.contact-fields textarea {
+  box-sizing: border-box;
+  width: 100%;
+  background: #eef2e7;
+  border: 1px solid #dfe7d3;
+  border-radius: 10px;
+  padding: 12px;
+  font-size: 12px;
+  margin: 9px 0;
+}
+.contact-fields input {
+  height: 44px;
+}
+.contact-fields textarea {
+  height: 72px;
+}
+.consent-choice {
+  width: 100%;
+  text-align: left;
+  font-size: 12px;
+  line-height: 1.8;
+  min-height: 45px;
+  color: #617653;
+  padding: 10px 0;
+}
+.fee-link {
+  font-size: 11px;
+  margin-bottom: 9px;
+  min-height: 34px;
+}
+.checkout-sheet .primary {
+  margin-top: 9px;
+}
+@keyframes sheet-in {
+  from {
+    transform: translateY(22px);
+    opacity: 0.4;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+@media (max-width: 370px) {
+  .gift-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+  }
+  .score {
+    font-size: 60px;
+  }
+  .project-title {
+    font-size: 25px;
+  }
+  .checkout-sheet {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gift-option,
+  .checkout-sheet {
+    animation: none;
+    transition: none;
+  }
 }
 </style>

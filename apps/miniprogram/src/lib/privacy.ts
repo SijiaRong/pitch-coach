@@ -1,4 +1,4 @@
-export const PRIVACY_VERSION = '2026-10-19-sharing-v1';
+export const PRIVACY_VERSION = '2026-10-20-cloud-v1';
 export const OPERATOR_NAME =
   (import.meta.env.VITE_OPERATOR_NAME || '').trim() || '上海动御新媒体科技有限公司';
 export const PRIVACY_CONTACT_EMAIL =

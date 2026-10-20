@@ -97,6 +97,7 @@ export interface EvaluationReport {
 }
 
 export interface JobStatus {
+  cloudStatus?: 'saved' | 'off' | 'failed';
   id: string;
   status: 'running' | 'done' | 'failed';
   completedInvestors: number;

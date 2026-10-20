@@ -11,6 +11,28 @@ const BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
 let token = '';
 let expiresAt = 0;
 let signingIn: Promise<void> | undefined;
+let wechatSession = false;
+export function hasWechatSession() {
+  if (token && expiresAt > Date.now()) return wechatSession;
+  try {
+    const saved = uni.getStorageSync('pitchcoach:session:v1');
+    return Boolean(
+      saved?.wechat && typeof saved.token === 'string' && saved.expiresAt > Date.now(),
+    );
+  } catch {
+    return false;
+  }
+}
+export function clearSession() {
+  token = '';
+  expiresAt = 0;
+  wechatSession = false;
+  try {
+    uni.removeStorageSync('pitchcoach:session:v1');
+  } catch {
+    /* Memory remains cleared. */
+  }
+}
 export class ApiFailure extends Error {
   constructor(
     public code: string,
@@ -43,8 +65,7 @@ export function request<T>(
         else {
           const error = (result.data as { error?: ApiError })?.error;
           if (result.statusCode === 401) {
-            token = '';
-            expiresAt = 0;
+            clearSession();
             try {
               uni.removeStorageSync('pitchcoach:session:v1');
             } catch {
@@ -77,13 +98,14 @@ async function login() {
     }),
   );
   // #endif
-  const session = await request<{ token: string; expiresIn: number }>(
+  const session = await request<{ token: string; expiresIn: number; development?: boolean }>(
     '/api/session',
     'POST',
     { code },
     false,
   );
   token = session.token;
+  wechatSession = session.development === false;
   expiresAt = Date.now() + (session.expiresIn - 60) * 1000;
 }
 export async function ensureSession(force = false) {
@@ -98,6 +120,7 @@ export async function ensureSession(force = false) {
         saved.expiresAt > Date.now()
       ) {
         token = saved.token;
+        wechatSession = saved.wechat === true;
         expiresAt = saved.expiresAt;
       }
     } catch {
@@ -111,7 +134,7 @@ export async function ensureSession(force = false) {
     });
   await signingIn;
   try {
-    uni.setStorageSync('pitchcoach:session:v1', { token, expiresAt });
+    uni.setStorageSync('pitchcoach:session:v1', { token, expiresAt, wechat: wechatSession });
   } catch {
     /* Best effort. */
   }
@@ -142,9 +165,14 @@ export const getConfig = (panel?: Pick<Submission, 'industry' | 'round' | 'prefe
     paymentsEnabled: boolean;
     reviewPriceFen: number;
     supportContact?: string;
-  }>(panel
-    ? `/api/config?industry=${encodeURIComponent(panel.industry)}&round=${encodeURIComponent(panel.round)}&preferences=${encodeURIComponent(panel.preferences.join(','))}`
-    : '/api/config', 'GET', undefined, false);
+  }>(
+    panel
+      ? `/api/config?industry=${encodeURIComponent(panel.industry)}&round=${encodeURIComponent(panel.round)}&preferences=${encodeURIComponent(panel.preferences.join(','))}`
+      : '/api/config',
+    'GET',
+    undefined,
+    false,
+  );
 
 export async function getBillingStatus() {
   await ensureSession();
@@ -233,7 +261,12 @@ export async function chooseDocument(): Promise<
       },
       fail: (error) => {
         if (isPrivacyRefusal(error))
-          reject(new ApiFailure('PRIVACY_DECLINED', '未同意微信隐私指引，未选择或上传文件。仍可粘贴文字或体验示例。'));
+          reject(
+            new ApiFailure(
+              'PRIVACY_DECLINED',
+              '未同意微信隐私指引，未选择或上传文件。仍可粘贴文字或体验示例。',
+            ),
+          );
         else if (error.errMsg?.includes('cancel')) resolve(undefined);
         else reject(new ApiFailure('FILE_ERROR', '无法选择文件，请稍后重试'));
       },

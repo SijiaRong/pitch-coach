@@ -3,6 +3,7 @@ import { computed, ref } from 'vue';
 import { onLoad } from '@dcloudio/uni-app';
 import {
   DEFAULT_UNLOCK_FEN,
+  GIFTS,
   PRICE_PRESETS_FEN,
   formatPrice,
   parsePrice,
@@ -12,6 +13,7 @@ import {
 import type { EvaluationReport, PrivateProjectPack } from '@pitchcoach/shared';
 import PageHeader from '@/components/PageHeader.vue';
 import PublicReport from '@/components/PublicReport.vue';
+import GiftIcon from '@/components/GiftIcon.vue';
 import { findReport } from '@/lib/storage';
 import { chooseDocument, uploadDocument } from '@/lib/api';
 import { commerceConfig, publishProject } from '@/lib/commerce-api';
@@ -142,23 +144,18 @@ const makePoster = () =>
   <view class="page compact publish-page"
     ><PageHeader back label="公开与分享设置" />
     <template v-if="report">
-      <text class="eyebrow">LET THE RIGHT PEOPLE FIND YOU</text
-      ><view class="publish-title">让真问题，<br />遇见真机会。</view>
-      <view v-if="demo" class="notice"
-        >当前为虚构项目演示，资料与联系人均为示例，不会真实收款或公开你的真实资料。</view
-      >
+      <view class="publish-title">让真问题，<br />遇见真机会。</view>
+      <view v-if="demo" class="notice">虚构演示，不收款，也不公开你的真实资料。</view>
       <template v-if="!created">
         <view class="section-card"
           ><view class="section-title">01 / 扫码免费查看</view
-          ><text class="form-help"
-            >公开完整评估：评分、红橙旗、死亡预言、关键假设、全部评审意见及改进清单。扫码者也可发起自己的评估。</text
-          >
+          ><text class="form-help">扫码免费查看完整评估，也能发起自己的评估。</text>
           <button class="choice-row" @click="anonymous = !anonymous">
             <text>{{ anonymous ? '☑' : '☐' }} 隐藏公开页的项目标题</text
             ><text>{{ anonymous ? '匿名' : '显示原名' }}</text>
           </button>
           <text class="form-help"
-            >隐藏标题不会自动脱敏报告正文。评估意见和原文摘录可能包含项目数据，请逐项确认适合公开；已公开的信息无需付费即可看到。</text
+            >隐藏标题不等于正文脱敏。请检查原文摘录与项目数据，公开后可被查看和转发。</text
           >
           <button class="secondary" @click="preview = !preview">
             {{ preview ? '收起公开内容' : '预览将公开的完整评估' }} ↗
@@ -171,7 +168,7 @@ const makePoster = () =>
             @click="publicConsent = !publicConsent"
           >
             {{ publicConsent ? '☑' : '☐' }}
-            我有权公开这份评估，已检查正文和原文摘录，理解公开后可被他人查看、复制和转发。
+            我已核对，确认公开完整评估及原文摘录
           </button>
         </view>
         <view class="section-card"
@@ -180,9 +177,7 @@ const makePoster = () =>
             <text>{{ unlockEnabled ? '☑' : '☐' }} 开启付费解锁</text>
           </button>
           <template v-if="unlockEnabled"
-            ><text class="form-help"
-              >购买者自我声明为投资人。支付核验后开放你在此提供的完整项目正文及联系方式；付款购买的是资料访问，不代表投资承诺。</text
-            >
+            ><text class="form-help">购买核实后开放下方资料与联系人。投资人身份由本人声明。</text>
             <text class="field-label">你来定价 · 推荐金额</text
             ><view class="price-grid"
               ><button
@@ -211,7 +206,7 @@ const makePoster = () =>
               @click="privateConsent = !privateConsent"
             >
               {{ privateConsent ? '☑' : '☐' }}
-              我确认有权提供下方资料与联系人信息，同意加密保存，并在购买核验后向购买者披露。
+              我有权提供下方资料与联系人，同意加密保存并向已核实购买者披露
             </button>
             <button v-if="!demo" class="secondary" :disabled="uploading" @click="upload">
               {{ uploading ? '正在提取文字…' : '选择 BP，提取为完整正文' }} ↗
@@ -248,27 +243,30 @@ const makePoster = () =>
           </template>
         </view>
         <view class="section-card"
-          ><view class="section-title">03 / 给围观者一个支持入口</view
+          ><view class="section-title">03 / 收到一份心意</view
           ><button class="choice-row" @click="tipsEnabled = !tipsEnabled">
-            {{ tipsEnabled ? '☑' : '☐' }} 开启项目打赏</button
+            {{ tipsEnabled ? '☑' : '☐' }} 开启项目礼物</button
           ><text class="form-help"
-            >提供 ¥8.88、¥88.88、¥888.88、¥8888.88
-            四档。支持者可自愿留下联系方式，仅向你展示，方便你考虑回馈。打赏不对应股权、收益或确定回馈。</text
+            >火花、助推器、火箭、星舰四种礼物。支持者可自愿留联，方便你考虑回馈；不承诺股权或回报。</text
+          ></view
+        >
+        <view v-if="tipsEnabled" class="gift-preview"
+          ><view v-for="gift in GIFTS" :key="gift.id"
+            ><GiftIcon :gift="gift.id" /><text>{{ gift.name }}</text></view
           ></view
         >
         <view v-if="unlockEnabled || tipsEnabled" class="section-card"
           ><view class="section-title">04 / 收款与服务费</view
           ><text class="form-help"
-            >平台统一收款。每笔订单按微信核实的实收扣除退款后收取 5% 服务费，按分四舍五入；其余 95%
-            为项目方份额。微信渠道费用另行对账，以上不代表可提现余额，结算安排确认后才开启真实收款。</text
+            >平台按退款后的已核实实收收取 5%
+            服务费，其余为项目方份额。渠道费用及结算另行核对。</text
           ><button
             class="consent-choice"
             role="checkbox"
             :aria-checked="feeConsent"
             @click="feeConsent = !feeConsent"
           >
-            {{ feeConsent ? '☑' : '☐' }} 我同意平台收款及 5%
-            服务费规则，理解渠道费用与结算另行核对。
+            {{ feeConsent ? '☑' : '☐' }} 同意平台收款与 5% 服务费规则
           </button></view
         >
         <view v-if="error" class="error-box" role="alert">{{ error }}</view
@@ -296,6 +294,19 @@ const makePoster = () =>
   </view>
 </template>
 <style scoped>
+.gift-preview {
+  display: flex;
+  justify-content: space-around;
+  gap: 8px;
+  margin: 20px 0;
+}
+.gift-preview > view > text {
+  display: block;
+  text-align: center;
+  font-size: 12px;
+  color: #70835e;
+  margin-top: 8px;
+}
 .publish-title {
   font-size: 31px;
   line-height: 1.5;

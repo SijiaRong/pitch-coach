@@ -15,13 +15,21 @@ export class VirtualPayment {
     private identities: IdentityVault,
     private store: ProjectStore,
   ) {}
-  available(kind: 'unlock' | 'tip', amount: number) {
-    return this.config.paymentEnabled && Boolean(this.config.paymentProducts[`${kind}:${amount}`]);
+  available(kind: 'unlock' | 'gift' | 'tip', amount: number) {
+    return (
+      this.config.paymentEnabled &&
+      Boolean(
+        this.config.paymentProducts[`${kind}:${amount}`] ||
+          (kind === 'gift' && this.config.paymentProducts[`tip:${amount}`]),
+      )
+    );
   }
-  product(kind: 'unlock' | 'tip', amount: number) {
+  product(kind: 'unlock' | 'gift' | 'tip', amount: number) {
     if (!this.config.paymentEnabled)
       throw new PublicError(503, 'PAYMENT_NOT_CONFIGURED', '真实收款尚未启用，暂不扣款');
-    const id = this.config.paymentProducts[`${kind}:${amount}`];
+    const id =
+      this.config.paymentProducts[`${kind}:${amount}`] ||
+      (kind === 'gift' ? this.config.paymentProducts[`tip:${amount}`] : undefined);
     if (!id)
       throw new PublicError(
         409,

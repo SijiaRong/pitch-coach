@@ -13,14 +13,14 @@
         "navigationBarTitleText": "项目评估"
       }
     },
-    { "path": "pages/history/index", "style": { "navigationBarTitleText": "我的报告" } },
+    { "path": "pages/history/index", "style": { "navigationBarTitleText": "我的" } },
     { "path": "pages/investors/index", "style": { "navigationBarTitleText": "AI 投委会" } },
     { "path": "pages/about/index", "style": { "navigationBarTitleText": "关于与隐私" } },
     { "path": "pages/privacy/index", "style": { "navigationBarTitleText": "隐私与使用说明" } },
     { "path": "pages/project/index", "style": { "navigationBarTitleText": "公开项目评估" } },
     { "path": "pages/publish/index", "style": { "navigationBarTitleText": "公开与分享设置" } },
     { "path": "pages/project-owner/index", "style": { "navigationBarTitleText": "公开项目管理" } },
-    { "path": "pages/commerce/index", "style": { "navigationBarTitleText": "我的项目与购买" } }
+    { "path": "pages/commerce/index", "style": { "navigationBarTitleText": "项目与礼物" } }
   ],
   "globalStyle": {
     "navigationStyle": "custom",
