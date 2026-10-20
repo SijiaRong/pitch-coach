@@ -108,6 +108,42 @@ textarea {
   color: var(--ink);
   background: var(--lime);
 }
+.primary {
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
+}
+.primary:active {
+  transform: translateY(1px) scale(0.99);
+}
+.hero,
+.account-card,
+.score-panel {
+  animation: surface-in 0.38s ease-out both;
+}
+@keyframes surface-in {
+  from {
+    opacity: 0;
+    transform: translateY(9px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero,
+  .account-card,
+  .score-panel {
+    animation: none;
+  }
+  .primary {
+    transition: none;
+  }
+  .primary:active {
+    transform: none;
+  }
+}
 .secondary {
   display: flex;
   align-items: center;

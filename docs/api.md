@@ -1,6 +1,6 @@
 # API 契约
 
-除健康检查、配置、创建会话和已验签的微信支付回调外，接口都需要 `Authorization: Bearer <token>`。响应均禁止缓存，不提供公开报告查询。
+除健康检查、配置、创建会话和已验签的微信支付回调外，接口都需要 `Authorization: Bearer <token>`。响应均禁止缓存；项目方单独确认公开后，可通过公开项目接口查看完整评估。公开浏览与账号配置查询不要求用户会话。
 
 ## GET /health
 
@@ -106,3 +106,9 @@ multipart 字段 `file` 和 `consent=true`。支持 `.pdf`、`.pptx`、`.docx`�
 - `POST /api/payments/wechat/notify`：微信支付回调，不使用用户会话。按原始 JSON 报文验签解密并核对商户、AppID、付款人、金额等信息后才入账，成功返回 204；失败返回非 2xx，由微信重试。重复回调不重复授予额度。
 
 `DELETE /api/evaluations/:id` 在报告完成前取消会恢复额度；完成后只清除报告缓存，不退还已消费额度。部分成功的报告计一次。启用支付时报告通过加密短期缓存支持重启后继续领取；全失败或意外中断的任务恢复额度。更多配置与人工退款流程见 [payments.md](payments.md)。
+
+## 公开项目、礼物与云端账户
+
+分享与虚拟支付参见 [接口与配置](project-sharing.md)，微信身份和 `/api/me` 系列参见 [账户与云端](accounts-and-cloud.md)。`POST /api/projects` 只接受本人签发报告与独立披露同意，项目方可设置价格及礼物入口。`GET /api/projects/:id` 免费公开授权评估，`code.png?format=mini|web` 获取实际扫码入口。`POST /api/projects/:id/orders` 使用 `kind=unlock|gift`；礼物必须提供有效 `giftId` 且金额匹配服务端目录。已核实后才发放资料或确认礼物，名称随订单快照保留。
+
+`/api/commerce/mine`、项目 `owner/settings/access` 和 `/api/orders/:id[/material]` 只对相应身份开放。资料访问与礼物的 XML 安全模式通知使用 `/api/payments/virtual/notify`；评估支付原有 JSON 通知继续使用 `/api/payments/wechat/notify`。两类支付配置独立，不共用通知协议。

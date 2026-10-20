@@ -187,7 +187,7 @@ describe('账本结构升级与存储控制', () => {
     } finally {
       store.close();
     }
-    expect(statSync(path).mode & 0o777).toBe(0o600);
+    if(process.platform!=='win32')expect(statSync(path).mode & 0o777).toBe(0o600);
   });
   it('新账本启用增量空间回收，WAL检查点与保留大小有限制', () => {
     const path = pathForTest(),
@@ -235,7 +235,7 @@ describe('一致性加密备份和恢复', () => {
       store.markPaid(order, 'tx-backup');
       const directory = join(path, '..', 'backups');
       const snapshot = await backupPayments(path, secret, directory);
-      expect(statSync(snapshot).mode & 0o777).toBe(0o600);
+      if(process.platform!=='win32')expect(statSync(snapshot).mode & 0o777).toBe(0o600);
       expect(readFileSync(snapshot).includes(Buffer.from('backup-private-openid'))).toBe(false);
       const restored = join(path, '..', 'restored.sqlite');
       await restorePayments(snapshot, secret, restored);

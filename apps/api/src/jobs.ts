@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { aggregateReport, getPanel, prepareReview } from '@pitchcoach/shared';
-import type { InvestorReview, JobStatus, Submission } from '@pitchcoach/shared';
+import type { InvestorReview, JobStatus, Submission, EvaluationReport } from '@pitchcoach/shared';
 import type { Config } from './config';
 import type { Reviewer } from './provider';
 import { PublicError } from './errors';
 import type { PaymentStore } from './payment-store';
+import { attestReport } from './report-proof';
 
 interface Job {
   owner: string;
@@ -22,6 +23,7 @@ export class EvaluationJobs {
     private config: Config,
     private reviewer: Reviewer,
     private payments?: PaymentStore,
+    private saveCloud?: (owner: string, report: EvaluationReport) => 'saved' | 'off',
   ) {}
 
   sweep() {
@@ -102,9 +104,15 @@ export class EvaluationJobs {
         throw first.reason;
       }
       const report = aggregateReport(submission, reviews, { id: job.state.id, mode: 'live' });
+      report.publicationProof = attestReport(report, job.owner, this.config.SESSION_SECRET);
       this.payments?.complete(job.state.id, report);
       job.state.report = report;
       job.state.status = 'done';
+      try {
+        job.state.cloudStatus = this.saveCloud?.(job.owner, report) || 'off';
+      } catch {
+        job.state.cloudStatus = 'failed';
+      }
     } catch (error) {
       job.state.status = 'failed';
       job.state.error =

@@ -4,7 +4,7 @@ import type { ImageShareBridge } from './share-flow';
 
 declare const wx: { showShareImageMenu?: ImageShareBridge['showMenu'] };
 
-export function sharePoster(path: string, context?: { industry?: unknown; round?: unknown }) {
+export function sharePoster(path: string, context?: { industry?: unknown; round?: unknown },publicPath?:string) {
   const bridge: ImageShareBridge = {
     preview: (url) => uni.previewImage({ urls: [url] }),
   };
@@ -12,5 +12,5 @@ export function sharePoster(path: string, context?: { industry?: unknown; round?
   if (typeof wx !== 'undefined' && typeof wx.showShareImageMenu === 'function')
     bridge.showMenu = (options) => wx.showShareImageMenu!(options);
   // #endif
-  return openPosterShare(path, bridge, sharePath('poster', context));
+  return openPosterShare(path, bridge, publicPath || sharePath('poster', context));
 }

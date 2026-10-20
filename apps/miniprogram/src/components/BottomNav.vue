@@ -2,8 +2,8 @@
 defineProps<{ active: 'home' | 'pitch' | 'history' }>();
 const items = [
   { id: 'home', label: '首页', icon: '◈', url: '/pages/index/index' },
-  { id: 'pitch', label: '开始评估', icon: '↗', url: '/pages/pitch/index' },
-  { id: 'history', label: '我的报告', icon: '▤', url: '/pages/history/index' },
+  { id: 'pitch', label: '评估', icon: '↗', url: '/pages/pitch/index' },
+  { id: 'history', label: '我的', icon: '▤', url: '/pages/history/index' },
 ];
 const go = (url: string) => uni.reLaunch({ url });
 </script>
@@ -20,8 +20,7 @@ const go = (url: string) => uni.reLaunch({ url });
       @click="active !== item.id && go(item.url)"
     >
       <text class="nav-icon">{{ item.icon }}</text
-      ><text>{{ item.label }}</text
-      >
+      ><text>{{ item.label }}</text>
     </button>
   </view>
 </template>

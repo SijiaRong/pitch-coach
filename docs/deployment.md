@@ -59,9 +59,9 @@ API 默认不信任客户端转发头，避免伪造 IP 绕过限流。使用本
 
 ## 数据生命周期
 
-文件和正文仅在解析、评估的内存中使用，不写入应用数据库。模型服务商会收到项目文字，其保存策略由服务商条款决定。部署者必须向用户明确实际服务商、资料用途与保存规则。
+普通评估的文件与正文仅在内存处理。主动开启云端保存、确认公开或提供解锁资料后，相应报告和资料进入独立的加密持久存储。模型服务商会收到项目文字，其保存策略由服务商条款决定。部署者必须向用户明确实际服务商、资料用途与保存规则。
 
-完成报告只在后台缓存最多 10 分钟，客户端领取后发送 DELETE 请求；网络异常可能导致缓存保留到过期。完整报告保存到当前设备，包含投资人发言、原文摘录等商业信息。当前设备最多保存 20 份，清理缓存或卸载可能丢失。分享海报由本机生成，默认匿名，用户预览后自行公开。
+未开启云端保存时，完成报告只在后台缓存最多 10 分钟，客户端领取后发送 DELETE 请求；网络异常可能导致缓存保留到过期。完整报告保存到当前设备，包含投资人发言、原文摘录等商业信息。当前设备最多保存 20 份，清理缓存或卸载可能丢失。分享海报由本机生成，默认匿名，用户预览后自行公开。
 
 生产环境不记录请求正文、认证头、文件正文或供应商完整错误。请勿在外层网关、APM 或自定义日志中重新开启这些内容记录。
 
@@ -71,3 +71,7 @@ API 默认不信任客户端转发头，避免伪造 IP 绕过限流。使用本
 - [DeepSeek Chat Completions](https://api-docs.deepseek.com/api/create-chat-completion/)
 - [DeepSeek JSON mode](https://api-docs.deepseek.com/guides/json_mode/)
 - [微信登录](https://developers.weixin.qq.com/miniprogram/dev/framework/open-ability/login.html)
+
+## 可选的云端保存与礼物
+
+`CLOUD_STORAGE_ENABLED`、`PROJECT_SHARING_ENABLED`、`VIRTUALPAY_ENABLED` 默认关闭，可独立准备。云端与公开项目使用 `PROJECT_DATABASE_PATH` 的持久卷和 `PROJECT_DATA_KEY`，微信身份使用稳定的 `OWNER_ID_SECRET`。已有评估支付部署引入身份密钥时需保留原身份映射，见 [升级与云端配置](accounts-and-cloud.md)。不要更换密钥导致历史订单归属丢失。礼物虚拟支付另配 `/api/payments/virtual/notify`；原评估支付 JSON 回调不变。没有自动提现或向项目方转账。

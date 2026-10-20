@@ -4,5 +4,6 @@ export * from './scoring';
 export * from './demo';
 export * from './diagnostic-schema';
 export * from './diagnostics';
-
+export * from './commerce';
 export * from './billing';
+export * from './account';

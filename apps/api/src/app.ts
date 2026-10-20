@@ -14,10 +14,18 @@ import { createReviewer } from './provider';
 import { Billing } from './billing';
 import { REVIEW_PRICE_FEN } from '@pitchcoach/shared';
 import type { Reviewer } from './provider';
+import { IdentityVault } from './wechat-api';
+import { registerCommerce } from './commerce-routes';
+import { registerCloudAccounts } from './cloud-account';
 
 export async function createApp(
   config: Config,
-  options: { reviewer?: Reviewer; logger?: boolean; billing?: Billing } = {},
+  options: {
+    reviewer?: Reviewer;
+    logger?: boolean;
+    billing?: Billing;
+    wechatFetch?: typeof fetch;
+  } = {},
 ) {
   const app = Fastify({
     logger: options.logger ?? false,
@@ -37,10 +45,14 @@ export async function createApp(
     errorResponseBuilder: () => new PublicError(429, 'RATE_LIMIT', '请求太频繁，请稍后重试'),
   });
   const billing = options.billing ?? Billing.create(config);
+  const identities = new IdentityVault();
+  const commerce = registerCommerce(app, config, identities, options.wechatFetch);
+  const accounts = registerCloudAccounts(app, config, commerce.store);
   const jobs = new EvaluationJobs(
     config,
     options.reviewer ?? createReviewer(config),
     billing?.store,
+    (owner, report) => accounts?.saveIfEnabled(owner, report) || 'off',
   );
   const timer = setInterval(() => {
     jobs.sweep();
@@ -86,19 +98,30 @@ export async function createApp(
 
   app.get('/health', async () => ({ ok: true }));
   app.get('/api/config', async (request) => {
-    const query = z.object({
-      industry: z.string().optional(),
-      round: z.string().optional(),
-      preferences: z.string().optional(),
-    }).parse(request.query);
+    const query = z
+      .object({
+        industry: z.string().optional(),
+        round: z.string().optional(),
+        preferences: z.string().optional(),
+      })
+      .parse(request.query);
     let liveAvailable = config.liveAvailable;
-    if (query.industry !== undefined || query.round !== undefined || query.preferences !== undefined) {
-      const panel = submissionSchema.pick({ industry: true, round: true, preferences: true }).parse({
-        ...query,
-        preferences: query.preferences?.split(','),
-      });
-      liveAvailable = Boolean(options.reviewer) || getPanel(panel.industry, panel.round, panel.preferences)
-        .every((investor) => Boolean(config.modelFor(investor.id).apiKey));
+    if (
+      query.industry !== undefined ||
+      query.round !== undefined ||
+      query.preferences !== undefined
+    ) {
+      const panel = submissionSchema
+        .pick({ industry: true, round: true, preferences: true })
+        .parse({
+          ...query,
+          preferences: query.preferences?.split(','),
+        });
+      liveAvailable =
+        Boolean(options.reviewer) ||
+        getPanel(panel.industry, panel.round, panel.preferences).every((investor) =>
+          Boolean(config.modelFor(investor.id).apiKey),
+        );
     }
     return {
       liveAvailable,
@@ -114,8 +137,12 @@ export async function createApp(
     { config: { rateLimit: { max: 20, timeWindow: '10 minutes' } } },
     async (request) => {
       const body = z.object({ code: z.string().max(256).optional() }).parse(request.body);
-      return createSession(body.code, config, fetch, (owner, openid) =>
-        billing?.register(owner, openid),
+      return createSession(
+        body.code,
+        config,
+        options.wechatFetch || fetch,
+        (owner, openid) => billing?.register(owner, openid),
+        (owner, identity) => identities.put(owner, identity),
       );
     },
   );
@@ -163,7 +190,9 @@ export async function createApp(
         .regex(/^[A-Za-z0-9_-]+$/)
         .optional()
         .parse(request.headers['idempotency-key']);
-      return reply.code(202).send(jobs.create(owner, submission, requestKey));
+      const job = jobs.create(owner, submission, requestKey);
+      commerce.recordReferral(submission.referralProjectId);
+      return reply.code(202).send(job);
     },
   );
   app.get('/api/evaluations/:id', async (request) => {

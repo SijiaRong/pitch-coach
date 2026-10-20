@@ -54,4 +54,34 @@ describe('公开海报绘制', () => {
     expect(drawn.map((item) => item.text).join('')).toContain('AI 生成');
     expect(drawn.every((item) => item.y > 0 && item.y < POSTER_HEIGHT)).toBe(true);
   });
+  it('使用实际扫码图片并扩展海报高度；不把本机报告编号绘制到二维码', async () => {
+    const drawImage = vi.fn(),
+      drawn: string[] = [];
+    const ctx = {
+      setFillStyle: vi.fn(),
+      fillRect: vi.fn(),
+      setFontSize: vi.fn(),
+      measureText: (text: string) => ({ width: text.length * 10 }),
+      fillText: (text: string) => drawn.push(text),
+      drawImage,
+      draw: (_reserve: boolean, done: () => void) => done(),
+    };
+    const exportImage = vi.fn((options: { success: (value: { tempFilePath: string }) => void }) =>
+      options.success({ tempFilePath: 'wxfile://poster-entry.png' }),
+    );
+    vi.stubGlobal('uni', { createCanvasContext: () => ctx, canvasToTempFilePath: exportImage });
+    await drawPoster(createDemoReport(), true, { codePath: 'wxfile://official-code.png' });
+    expect(drawImage).toHaveBeenCalledWith(
+      'wxfile://official-code.png',
+      26,
+      655,
+      104,
+      104,
+    );
+    expect(drawn.join('')).toContain('扫码看完整评估');
+    expect(drawn.join('')).toContain('也给你的项目');
+    expect(exportImage).toHaveBeenCalledWith(
+      expect.objectContaining({ height: 812, destHeight: 2436 }),
+    );
+  });
 });

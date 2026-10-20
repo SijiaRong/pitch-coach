@@ -40,4 +40,21 @@ describe('朋友圈优先的海报分享', () => {
       expect(preview).toHaveBeenCalledExactlyOnceWith('wxfile://poster.png');
     }
   });
+  it('允许随机公开项目入口，拒绝本机报告编号和外部地址', async () => {
+    for (const path of [
+      '/pages/project/index?share=abcdefghijklmnopqrstuv',
+      '/pages/report/index?id=private-report',
+      'https://example.invalid',
+    ]) {
+      const showMenu = vi.fn<NonNullable<ImageShareBridge['showMenu']>>((options) =>
+        options.success(),
+      );
+      await openPosterShare('wxfile://poster.png', { showMenu, preview: vi.fn() }, path);
+      expect(showMenu).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entrancePath: path.includes('?share=') ? path : '/pages/index/index?from=poster',
+        }),
+      );
+    }
+  });
 });
