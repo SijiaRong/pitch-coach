@@ -225,6 +225,8 @@ describe('模型适配与任务退化', () => {
       NODE_ENV: 'test',
       AI_API_KEY: 'test-only',
       AI_MODEL: 'unit-test-model',
+      AI_MAX_OUTPUT_TOKENS: '12000',
+      AI_TIMEOUT_MS: '240000',
     });
     const run = createReviewer(local, fetcher as typeof fetch);
     const result = await run(
@@ -245,6 +247,13 @@ describe('模型适配与任务退化', () => {
     const body = JSON.parse(fetcher.mock.calls[0][1]!.body as string);
     expect(body.response_format).toEqual({ type: 'json_object' });
     expect(body.model).toBe('unit-test-model');
+    expect(body.max_tokens).toBe(12000);
+  });
+  it('思考与报告共享有界输出预算，预算不能由不合理配置放大', () => {
+    expect(loadConfig({ NODE_ENV: 'test' }).AI_MAX_OUTPUT_TOKENS).toBe(16000);
+    expect(() => loadConfig({ AI_MAX_OUTPUT_TOKENS: '0' })).toThrow();
+    expect(() => loadConfig({ AI_MAX_OUTPUT_TOKENS: '1000000' })).toThrow();
+    expect(() => loadConfig({ AI_TIMEOUT_MS: '300001' })).toThrow();
   });
   it('截断或异常输出不能伪装成有效评分', async () => {
     const local = loadConfig({ NODE_ENV: 'test', AI_API_KEY: 'test-only' });

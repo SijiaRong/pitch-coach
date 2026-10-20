@@ -26,7 +26,8 @@ export function createReviewer(config: Config, fetcher: typeof fetch = fetch): R
           model: model.model,
           messages: buildMessages(submission, investor),
           temperature: 0.55,
-          max_tokens: 6000,
+          // Thinking models share this budget between reasoning and the final report.
+          max_tokens: config.AI_MAX_OUTPUT_TOKENS,
           ...(model.jsonMode ? { response_format: { type: 'json_object' } } : {}),
         }),
       });

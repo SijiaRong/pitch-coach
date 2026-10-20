@@ -584,7 +584,8 @@ async function submit() {
       terminal = true;
       throw new Error(job.error?.message || '评估未完成，额度已恢复');
     }
-    const deadline = Date.now() + 150000;
+    // Allow the server's bounded five-minute model timeout plus polling overhead.
+    const deadline = Date.now() + 330000;
     let failures = 0;
     while (generation === operation && Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 1600));
