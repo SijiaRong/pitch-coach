@@ -65,6 +65,8 @@ export class WechatApi {
             env_version: this.config.MINIPROGRAM_ENV,
             check_path: this.config.MINIPROGRAM_ENV === 'release',
             width: 430,
+            // The PNG routes need transparent PNG bytes; WeChat otherwise returns JPEG.
+            is_hyaline: true,
           }),
           signal: AbortSignal.timeout(10000),
         },
