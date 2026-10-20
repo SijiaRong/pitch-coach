@@ -148,7 +148,7 @@ async function fixture(extra: Record<string, string> = {}) {
     });
     return app.inject({
       method: 'POST',
-      url: `/api/payments/wechat/notify?${query}`,
+      url: `/api/payments/virtual/notify?${query}`,
       headers: { 'content-type': 'application/xml' },
       payload: `<xml><Encrypt><![CDATA[${envelope.Encrypt}]]></Encrypt></xml>`,
     });
@@ -342,7 +342,7 @@ describe('公开项目与真实支付权限边界', () => {
       (
         await f.app.inject({
           method: 'POST',
-          url: '/api/payments/wechat/notify?msg_signature=bad&timestamp=1714036504&nonce=1',
+          url: '/api/payments/virtual/notify?msg_signature=bad&timestamp=1714036504&nonce=1',
           headers: { 'content-type': 'application/xml' },
           payload: '<xml><Encrypt>bad</Encrypt></xml>',
         })

@@ -136,6 +136,22 @@ describe('评估 API', () => {
     expect(result.json().error.code).toBe('AI_NOT_CONFIGURED');
     expect((await app.inject('/api/config')).json().liveAvailable).toBe(false);
   });
+  it('付款前能核对当前阵容，不能用其他行业已就绪代替本场可用性', async () => {
+    const partial = loadConfig({
+      NODE_ENV: 'test',
+      SESSION_SECRET: 'test-secret-only-not-for-production',
+      AI_INDUSTRY_AI_API_KEY: 'test-only-not-a-real-key',
+    });
+    const app = await createApp(partial);
+    apps.push(app);
+    const preferences = DEFAULT_PREFERENCES.join(',');
+    expect((await app.inject('/api/config')).json().liveAvailable).toBe(true);
+    expect((await app.inject(`/api/config?industry=ai&round=angel&preferences=${preferences}`)).json().liveAvailable).toBe(true);
+    expect((await app.inject(`/api/config?industry=hardware&round=angel&preferences=${preferences}`)).json().liveAvailable).toBe(false);
+    const invalid = await app.inject('/api/config?industry=ai&round=angel&preferences=technology,technology,growth');
+    expect(invalid.statusCode).toBe(400);
+    expect((await app.inject('/api/config?industry=unknown')).statusCode).toBe(400);
+  });
   it('拒绝生产环境弱密钥和缺少微信凭据', () => {
     expect(() => loadConfig({ NODE_ENV: 'production' })).toThrow('SESSION_SECRET');
     expect(() => loadConfig({ NODE_ENV: 'production', SESSION_SECRET: 'a'.repeat(32) })).toThrow(
@@ -209,6 +225,8 @@ describe('模型适配与任务退化', () => {
       NODE_ENV: 'test',
       AI_API_KEY: 'test-only',
       AI_MODEL: 'unit-test-model',
+      AI_MAX_OUTPUT_TOKENS: '12000',
+      AI_TIMEOUT_MS: '240000',
     });
     const run = createReviewer(local, fetcher as typeof fetch);
     const result = await run(
@@ -229,6 +247,13 @@ describe('模型适配与任务退化', () => {
     const body = JSON.parse(fetcher.mock.calls[0][1]!.body as string);
     expect(body.response_format).toEqual({ type: 'json_object' });
     expect(body.model).toBe('unit-test-model');
+    expect(body.max_tokens).toBe(12000);
+  });
+  it('思考与报告共享有界输出预算，预算不能由不合理配置放大', () => {
+    expect(loadConfig({ NODE_ENV: 'test' }).AI_MAX_OUTPUT_TOKENS).toBe(16000);
+    expect(() => loadConfig({ AI_MAX_OUTPUT_TOKENS: '0' })).toThrow();
+    expect(() => loadConfig({ AI_MAX_OUTPUT_TOKENS: '1000000' })).toThrow();
+    expect(() => loadConfig({ AI_TIMEOUT_MS: '300001' })).toThrow();
   });
   it('截断或异常输出不能伪装成有效评分', async () => {
     const local = loadConfig({ NODE_ENV: 'test', AI_API_KEY: 'test-only' });
@@ -363,5 +388,34 @@ describe('资料解析边界', () => {
     await expect(extractDocument(Buffer.from('not a pdf'), 'bp.pdf')).rejects.toMatchObject({
       code: 'PARSE_FAILED',
     });
+  });
+});
+
+describe('反向代理限流隔离', () => {
+  it.each([
+    { trust: 'false', remoteAddress: '127.0.0.1', expectedLast: 429 },
+    { trust: 'true', remoteAddress: '127.0.0.1', expectedLast: 400 },
+    { trust: 'true', remoteAddress: '203.0.113.50', expectedLast: 429 },
+  ] as const)('trust=$trust peer=$remoteAddress', async ({ trust, remoteAddress, expectedLast }) => {
+    const app = await createApp(loadConfig({
+      NODE_ENV: 'test',
+      TRUST_PROXY_LOOPBACK: trust,
+      WECHAT_APP_ID: 'test-app',
+      WECHAT_APP_SECRET: 'test-secret',
+    }));
+    apps.push(app);
+    let status = 0;
+    for (let index = 1; index <= 21; index++) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/session',
+        remoteAddress,
+        headers: { 'x-forwarded-for': `198.51.100.${index}` },
+        payload: {},
+      });
+      status = response.statusCode;
+      if (index <= 20) expect(status).toBe(400);
+    }
+    expect(status).toBe(expectedLast);
   });
 });

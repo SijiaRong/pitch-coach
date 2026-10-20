@@ -4,13 +4,15 @@ import type { InvestorReview, JobStatus, Submission } from '@pitchcoach/shared';
 import type { Config } from './config';
 import type { Reviewer } from './provider';
 import { PublicError } from './errors';
-import { attestReport } from './report-proof';
+import type { PaymentStore } from './payment-store';
+import {attestReport} from './report-proof';
 
 interface Job {
   owner: string;
   expiresAt: number;
   controller: AbortController;
   state: JobStatus;
+  creditReleased?: boolean;
 }
 
 export class EvaluationJobs {
@@ -20,6 +22,7 @@ export class EvaluationJobs {
   constructor(
     private config: Config,
     private reviewer: Reviewer,
+    private payments?: PaymentStore,
   ) {}
 
   sweep() {
@@ -27,13 +30,19 @@ export class EvaluationJobs {
     for (const [id, job] of this.jobs)
       if (job.expiresAt <= now) {
         job.controller.abort();
+        this.release(job);
         this.jobs.delete(id);
       }
     for (const [id, entry] of this.daily) if (entry.expiresAt <= now) this.daily.delete(id);
   }
 
-  create(owner: string, submission: Submission): JobStatus {
+  create(owner: string, submission: Submission, requestKey?: string): JobStatus {
     this.sweep();
+    if (this.payments) {
+      if (!requestKey) throw new PublicError(400, 'REQUEST_KEY_REQUIRED', '请升级小程序后发起评审');
+      const previous = this.payments.previous(owner, requestKey);
+      if (previous) return this.get(previous, owner);
+    }
     if (this.active >= this.config.MAX_ACTIVE_EVALUATIONS || this.jobs.size >= 1000)
       throw new PublicError(429, 'AI_BUSY', '投委会正忙，请稍后再试');
     if (
@@ -41,15 +50,17 @@ export class EvaluationJobs {
     )
       throw new PublicError(409, 'ALREADY_RUNNING', '已有一份项目正在评估，请等待完成');
     const limit = this.daily.get(owner);
-    if (limit && limit.count >= this.config.DAILY_EVALUATIONS_PER_USER)
+    if (!this.payments && limit && limit.count >= this.config.DAILY_EVALUATIONS_PER_USER)
       throw new PublicError(429, 'DAILY_LIMIT', '今日评估次数已用完，明天再来打磨项目');
-    if (!limit && this.daily.size >= 10000)
+    if (!this.payments && !limit && this.daily.size >= 10000)
       throw new PublicError(429, 'AI_BUSY', '服务繁忙，请稍后再试');
-    this.daily.set(owner, {
-      count: (limit?.count ?? 0) + 1,
-      expiresAt: limit?.expiresAt ?? Date.now() + 24 * 60 * 60 * 1000,
-    });
     const id = randomUUID();
+    this.payments?.reserve(owner, id, requestKey!);
+    if (!this.payments)
+      this.daily.set(owner, {
+        count: (limit?.count ?? 0) + 1,
+        expiresAt: limit?.expiresAt ?? Date.now() + 24 * 60 * 60 * 1000,
+      });
     const job: Job = {
       owner,
       expiresAt: Date.now() + 10 * 60 * 1000,
@@ -91,12 +102,10 @@ export class EvaluationJobs {
         ) as PromiseRejectedResult;
         throw first.reason;
       }
-      job.state.report = aggregateReport(submission, reviews, { id: job.state.id, mode: 'live' });
-      job.state.report.publicationProof = attestReport(
-        job.state.report,
-        job.owner,
-        this.config.SESSION_SECRET,
-      );
+      const report = aggregateReport(submission, reviews, { id: job.state.id, mode: 'live' });
+      report.publicationProof=attestReport(report,job.owner,this.config.SESSION_SECRET);
+      this.payments?.complete(job.state.id, report);
+      job.state.report = report;
       job.state.status = 'done';
     } catch (error) {
       job.state.status = 'failed';
@@ -105,14 +114,25 @@ export class EvaluationJobs {
           ? { code: error.code, message: error.message }
           : { code: 'EVALUATION_FAILED', message: '评估未完成，请稍后重试' };
       // Failed attempts do not consume the daily allowance.
-      const entry = this.daily.get(job.owner);
-      if (entry) entry.count = Math.max(0, entry.count - 1);
+      this.release(job);
     }
+  }
+
+  private release(job: Job) {
+    if (job.state.status === 'done' || job.creditReleased) return;
+    this.payments?.release(job.state.id);
+    job.creditReleased = true;
+    const entry = this.daily.get(job.owner);
+    if (entry) entry.count = Math.max(0, entry.count - 1);
   }
 
   get(id: string, owner: string): JobStatus {
     this.sweep();
     const job = this.jobs.get(id);
+    if (!job) {
+      const recovered = this.payments?.job(id, owner);
+      if (recovered) return recovered;
+    }
     if (!job || job.owner !== owner)
       throw new PublicError(404, 'REPORT_NOT_FOUND', '报告已过期或不存在，请重新评估');
     return { ...job.state };
@@ -122,12 +142,17 @@ export class EvaluationJobs {
     const job = this.jobs.get(id);
     if (job?.owner === owner) {
       job.controller.abort();
+      this.release(job);
       this.jobs.delete(id);
     }
+    this.payments?.forgetReport(id, owner);
   }
 
   close() {
-    for (const job of this.jobs.values()) job.controller.abort();
+    for (const job of this.jobs.values()) {
+      job.controller.abort();
+      this.release(job);
+    }
     this.jobs.clear();
   }
 }

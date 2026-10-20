@@ -8,3 +8,6 @@ allowBuilds:
   '@napi-rs/canvas': true
   core-js: false
   core-js-pure: false
+  '@parcel/watcher': false
+  less: false
+  protobufjs: false

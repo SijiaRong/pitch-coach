@@ -1,15 +1,15 @@
 page {
   --paper: #f7f7f0;
   --ink: #202b27;
-  --muted: #7b837b;
-  --line: #e5e7dd;
+  --muted: #626d64;
+  --line: #dfe5d7;
   --green: #2f684e;
   --lime: #d9f18a;
   background: var(--paper);
   color: var(--ink);
   font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
   font-size: 14px;
-  line-height: 1.6;
+  line-height: 1.85;
 }
 view,
 text,
@@ -39,6 +39,12 @@ button[disabled] {
 button:active {
   opacity: 0.8;
 }
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid #71986d;
+  outline-offset: 3px;
+}
 input,
 textarea {
   font: inherit;
@@ -48,10 +54,10 @@ textarea {
   max-width: 560px;
   margin: 0 auto;
   min-height: 100vh;
-  padding: 0 24px 110px;
+  padding: 0 24px calc(112px + env(safe-area-inset-bottom));
 }
 .page.compact {
-  padding-bottom: 40px;
+  padding-bottom: calc(40px + env(safe-area-inset-bottom));
 }
 .eyebrow {
   display: block;
@@ -74,8 +80,12 @@ textarea {
 }
 .link {
   color: var(--green);
-  font-size: 12px;
+  font-size: 13px;
   text-align: right;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
 }
 .muted {
   color: var(--muted);
@@ -116,7 +126,7 @@ textarea {
   width: fit-content;
   border-radius: 30px;
   padding: 4px 10px;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   background: #eaf0e3;
   color: var(--green);
@@ -146,7 +156,7 @@ textarea {
   color: #a24c30;
   padding: 12px 14px;
   border-radius: 12px;
-  font-size: 12px;
+  font-size: 13px;
   margin: 14px 0;
   overflow-wrap: anywhere;
 }
@@ -155,12 +165,12 @@ textarea {
   background: #edf2e5;
   border-radius: 12px;
   color: #5d725a;
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.8;
 }
 .caption {
   display: block;
-  font-size: 11px;
+  font-size: 13px;
   color: var(--muted);
   line-height: 1.8;
 }
@@ -196,6 +206,7 @@ textarea {
   gap: 6px;
 }
 .back-link {
+  min-height: 44px;
   padding: 12px 0;
   font-size: 13px;
   color: var(--green);
@@ -203,9 +214,9 @@ textarea {
 }
 .bottom-note {
   text-align: center;
-  color: #9ba18f;
+  color: #626d64;
   margin-top: 24px;
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 1px;
 }
 /* #ifdef H5 */
@@ -272,6 +283,10 @@ body {
   margin: 0;
   background: #e8ebe2;
 }
+uni-button:focus-visible {
+  outline: 3px solid #71986d;
+  outline-offset: 3px;
+}
 uni-page-body {
   min-height: 100vh;
 }
@@ -286,3 +301,12 @@ uni-page-body {
   }
 }
 /* #endif */
+@media (max-width: 360px) {
+  .page {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+  .section-title {
+    font-size: 17px;
+  }
+}

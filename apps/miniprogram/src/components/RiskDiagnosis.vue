@@ -5,9 +5,6 @@ import type { ReportDiagnostics } from '@pitchcoach/shared';
 
 const props = defineProps<{ diagnostics?: ReportDiagnostics }>();
 const selected = ref('');
-const active = computed(
-  () => selected.value || (props.diagnostics?.redFlags.length ? 'red' : 'orange'),
-);
 const authors = (ids: string[]) => ids.map((id) => INVESTORS[id]?.name || 'AI 评审').join('、');
 const sections = computed(() => [
   { id: 'red', label: '阻断红旗', count: props.diagnostics?.redFlags.length ?? 0 },
@@ -15,6 +12,9 @@ const sections = computed(() => [
   { id: 'death', label: '死亡预言', count: props.diagnostics?.failureModes.length ?? 0 },
   { id: 'assumption', label: '关键假设', count: props.diagnostics?.assumptions.length ?? 0 },
 ]);
+const active = computed(
+  () => selected.value || sections.value.find((section) => section.count > 0)?.id || 'orange',
+);
 </script>
 
 <template>
@@ -28,6 +28,7 @@ const sections = computed(() => [
         :key="section.id"
         class="risk-section-button"
         :class="[section.id, { active: active === section.id }]"
+        :aria-label="`${section.label}，${section.count}项${active === section.id ? '，已选择' : ''}`"
         @click="selected = section.id"
       >
         <text class="risk-count mono">{{ section.count }}</text
@@ -143,8 +144,9 @@ const sections = computed(() => [
   padding: 11px 2px;
   border: 1px solid #e0e5d5;
   border-radius: 10px;
-  color: #88957d;
-  font-size: 10px;
+  color: #64745a;
+  font-size: 12px;
+  min-height: 78px;
 }
 .risk-count {
   display: block;
@@ -170,9 +172,9 @@ const sections = computed(() => [
 .risk-empty,
 .legacy-diagnosis {
   display: block;
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.9;
-  color: #79886f;
+  color: #5a6f50;
 }
 .risk-empty,
 .legacy-diagnosis {
@@ -203,14 +205,14 @@ const sections = computed(() => [
   border-left-color: #4c6656;
 }
 .risk-title {
-  font-size: 14px;
+  font-size: 15px;
   color: #354d3e;
   line-height: 1.7;
   font-weight: 700;
   margin-bottom: 9px;
 }
 .risk-tag {
-  font-size: 9px;
+  font-size: 12px;
   padding: 3px 5px;
   border-radius: 4px;
   margin-right: 7px;
@@ -227,15 +229,15 @@ const sections = computed(() => [
 .risk-body,
 .risk-evidence {
   display: block;
-  font-size: 11px;
-  color: #65755c;
+  font-size: 14px;
+  color: #52674a;
   line-height: 1.9;
   overflow-wrap: anywhere;
 }
 .risk-label {
   display: block;
-  font-size: 10px;
-  color: #859278;
+  font-size: 12px;
+  color: #617553;
   margin: 14px 0 5px;
   font-weight: 600;
 }
@@ -247,8 +249,8 @@ const sections = computed(() => [
 .risk-authors,
 .assumption-basis {
   display: block;
-  font-size: 9px;
-  color: #91a083;
+  font-size: 12px;
+  color: #64775a;
   line-height: 1.7;
   margin-top: 13px;
 }

@@ -1,0 +1,35 @@
+[Unit]
+Description=PitchCoach ledger cleanup and encrypted bounded backup
+After=local-fs.target
+
+[Service]
+Type=oneshot
+User=pitchcoach
+Group=pitchcoach
+StateDirectory=pitchcoach-api
+StateDirectoryMode=0700
+WorkingDirectory=/opt/pitch-coach/current
+EnvironmentFile=/etc/pitch-coach/api.env
+ExecStart=/usr/bin/node dist/payment-maintenance.js backup
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX
+CapabilityBoundingSet=
+CPUQuota=20%
+CPUWeight=10
+MemoryMax=256M
+LimitCORE=0
+TasksMax=32
+Nice=15
+IOSchedulingClass=idle
+TimeoutStartSec=30min
+StandardOutput=journal
+StandardError=journal

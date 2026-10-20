@@ -64,7 +64,7 @@ PROJECT_SETTLEMENT_READY=true
 VIRTUALPAY_ENABLED=true
 ```
 
-以上商品 ID 是格式示例，必须替换，其他价位也需逐一映射；不能直接上线示例字符串。WeChat 后台消息推送 URL 为 `https://后台域名/api/payments/wechat/notify`，选择 **XML、安全模式**，Token、EncodingAESKey 与 AppID 一致。启动时检查所需配置，缺项时拒绝开启收款。正式开启前应先以测试环境/测试账号完成官方产品联调；当前签名参数为生产 `env=0`，仓库测试使用替身服务，不会向微信发起付款。
+以上商品 ID 是格式示例，必须替换，其他价位也需逐一映射；不能直接上线示例字符串。WeChat 后台消息推送 URL 为 `https://后台域名/api/payments/virtual/notify`，选择 **XML、安全模式**，Token、EncodingAESKey 与 AppID 一致。启动时检查所需配置，缺项时拒绝开启收款。正式开启前应先以测试环境/测试账号完成官方产品联调；当前签名参数为生产 `env=0`，仓库测试使用替身服务，不会向微信发起付款。
 
 前端使用 `wx.requestVirtualPayment`。服务端绑定用户、已确认版本、商品、金额和资料快照，计算 AppKey 支付签名及仅存服务端的 session_key 用户签名。真实支付需手机微信支持该接口与对应系统能力；H5 和模拟器只体验演示。iOS 版本检查是客户端提示，不能代替账号的 IAP 开通与审核。
 

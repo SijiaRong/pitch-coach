@@ -3,7 +3,7 @@
     {
       "path": "pages/index/index",
       "style": {
-        "navigationBarTitleText": "融资教练"
+        "navigationBarTitleText": "AI投了么"
       }
     },
     { "path": "pages/pitch/index", "style": { "navigationBarTitleText": "提交项目" } },

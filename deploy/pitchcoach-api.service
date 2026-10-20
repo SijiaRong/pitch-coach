@@ -1,0 +1,49 @@
+[Unit]
+Description=AI投了么 API (isolated single instance)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=120
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=pitchcoach
+Group=pitchcoach
+StateDirectory=pitchcoach-api
+StateDirectoryMode=0700
+WorkingDirectory=/opt/pitch-coach/current
+EnvironmentFile=/etc/pitch-coach/api.env
+ExecCondition=/usr/bin/node /opt/pitch-coach/bin/check-config.mjs
+ExecStart=/usr/bin/node dist/server.js
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=20
+KillSignal=SIGTERM
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+CPUQuota=75%
+CPUWeight=20
+MemoryHigh=768M
+MemoryMax=1G
+MemorySwapMax=0
+TasksMax=64
+LimitNOFILE=4096
+LimitCORE=0
+Nice=10
+LogRateLimitIntervalSec=60s
+LogRateLimitBurst=100
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

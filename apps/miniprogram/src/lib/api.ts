@@ -1,4 +1,10 @@
-import type { ApiError, JobStatus, Submission } from '@pitchcoach/shared';
+import type {
+  ApiError,
+  BillingStatus,
+  JobStatus,
+  Submission,
+  WechatPaymentParams,
+} from '@pitchcoach/shared';
 import { hasAIDataConsent, isPrivacyRefusal } from './privacy';
 
 const BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
@@ -19,6 +25,7 @@ export function request<T>(
   method: 'GET' | 'POST' | 'DELETE' = 'GET',
   data?: unknown,
   authenticated = true,
+  extraHeaders: Record<string, string> = {},
 ): Promise<T> {
   return new Promise((resolve, reject) =>
     uni.request({
@@ -29,6 +36,7 @@ export function request<T>(
       header: {
         'Content-Type': 'application/json',
         ...(authenticated && token ? { Authorization: `Bearer ${token}` } : {}),
+        ...extraHeaders,
       },
       success(result) {
         if (result.statusCode >= 200 && result.statusCode < 300) resolve(result.data as T);
@@ -109,26 +117,76 @@ export async function ensureSession(force = false) {
   }
 }
 
-export async function evaluate(submission: Submission) {
+export async function evaluate(submission: Submission, requestKey?: string) {
   const checkConsent = () => {
     if (!submission.consent || !hasAIDataConsent())
       throw new ApiFailure('CONSENT_REQUIRED', '请先同意将项目资料交给 DeepSeek 进行评估');
   };
   checkConsent();
   await ensureSession();
-  // A user may withdraw consent while the login request is still in flight.
   checkConsent();
-  return request<JobStatus>('/api/evaluations', 'POST', submission);
+  return request<JobStatus>(
+    '/api/evaluations',
+    'POST',
+    submission,
+    true,
+    requestKey ? { 'Idempotency-Key': requestKey } : {},
+  );
 }
 export const pollEvaluation = (id: string) => request<JobStatus>(`/api/evaluations/${id}`);
 export const deleteEvaluation = (id: string) => request<void>(`/api/evaluations/${id}`, 'DELETE');
-export const getConfig = () =>
-  request<{ liveAvailable: boolean; requireWechat: boolean }>(
-    '/api/config',
-    'GET',
-    undefined,
-    false,
+export const getConfig = (panel?: Pick<Submission, 'industry' | 'round' | 'preferences'>) =>
+  request<{
+    liveAvailable: boolean;
+    requireWechat: boolean;
+    paymentsEnabled: boolean;
+    reviewPriceFen: number;
+    supportContact?: string;
+  }>(panel
+    ? `/api/config?industry=${encodeURIComponent(panel.industry)}&round=${encodeURIComponent(panel.round)}&preferences=${encodeURIComponent(panel.preferences.join(','))}`
+    : '/api/config', 'GET', undefined, false);
+
+export async function getBillingStatus() {
+  await ensureSession();
+  return request<BillingStatus>('/api/billing/status');
+}
+export async function createPaymentOrder() {
+  await ensureSession();
+  return request<{ orderId: string; payment: WechatPaymentParams }>(
+    '/api/billing/orders',
+    'POST',
+    {},
   );
+}
+export async function queryPaymentOrder(id: string) {
+  await ensureSession();
+  return request<{ order: { id: string; status: string }; billing: BillingStatus }>(
+    `/api/billing/orders/${id}`,
+  );
+}
+export async function payWithWechat(params: WechatPaymentParams): Promise<void> {
+  // #ifdef MP-WEIXIN
+  return new Promise((resolve, reject) =>
+    uni.requestPayment({
+      provider: 'wxpay',
+      ...params,
+      success: () => resolve(),
+      fail: (error) =>
+        reject(
+          new ApiFailure(
+            'PAYMENT_NOT_COMPLETED',
+            error.errMsg?.includes('cancel')
+              ? '你已取消支付；若已扣款，请查询订单与额度'
+              : '支付未确认，请查询订单与额度，勿重复付款',
+          ),
+        ),
+    }),
+  );
+  // #endif
+  // #ifndef MP-WEIXIN
+  throw new ApiFailure('WECHAT_REQUIRED', '请在微信小程序中完成支付；浏览器可免费体验示例');
+  // #endif
+}
 
 export async function uploadDocument(path: string): Promise<{ text: string; truncated: boolean }> {
   await ensureSession();

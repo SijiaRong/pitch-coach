@@ -55,7 +55,7 @@ describe('真实评估发送前的同意校验', () => {
     expect(request).toHaveBeenCalledOnce();
   });
 
-  it('主动同意后正常提交，不增加额外授权网络请求', async () => {
+  it('主动同意后保留评审幂等键正常提交，不增加额外授权网络请求', async () => {
     const request = vi.fn((options: { url: string; success: (value: unknown) => void }) => {
       options.success({
         statusCode: options.url.endsWith('/api/session') ? 200 : 202,
@@ -72,10 +72,13 @@ describe('真实评估发送前的同意校验', () => {
     });
     (await import('./privacy')).setAIDataConsent(true);
     const { evaluate } = await import('./api');
-    expect(await evaluate(submission)).toMatchObject({ id: 'job-id', status: 'running' });
+    expect(await evaluate(submission, 'review-consent-idempotency-test')).toMatchObject({ id: 'job-id', status: 'running' });
     expect(request.mock.calls.map(([options]) => options.url)).toEqual([
       'https://api.example.com/api/session',
       'https://api.example.com/api/evaluations',
     ]);
+    expect(request.mock.calls[1][0]).toMatchObject({
+      header: { 'Idempotency-Key': 'review-consent-idempotency-test' },
+    });
   });
 });

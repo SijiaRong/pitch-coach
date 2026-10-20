@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { isAbsolute } from 'node:path';
 import { z } from 'zod';
 import {
   INDUSTRIES,
@@ -13,10 +14,12 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   HOST: z.string().default('127.0.0.1'),
   PORT: z.coerce.number().int().min(1).max(65535).default(8787),
+  TRUST_PROXY_LOOPBACK: z.enum(['true', 'false']).default('false'),
   AI_BASE_URL: z.url().default('https://api.deepseek.com'),
   AI_API_KEY: z.string().default(''),
   AI_MODEL: z.string().default('deepseek-flash'),
-  AI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(60000),
+  AI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(60000),
+  AI_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(512).max(32768).default(16000),
   AI_JSON_MODE: z.enum(['true', 'false']).default('true'),
   SESSION_SECRET: z.string().default(''),
   WECHAT_APP_ID: z.string().default(''),
@@ -37,6 +40,16 @@ const envSchema = z.object({
   CORS_ORIGINS: z.string().default('http://localhost:5173,http://127.0.0.1:5173'),
   MAX_ACTIVE_EVALUATIONS: z.coerce.number().int().min(1).max(20).default(2),
   DAILY_EVALUATIONS_PER_USER: z.coerce.number().int().min(1).max(100).default(5),
+  PAYMENTS_ENABLED: z.enum(['true', 'false']).default('false'),
+  PAYMENT_DB_PATH: z.string().default('./data/payments.sqlite'),
+  WECHAT_PAY_MCH_ID: z.string().default(''),
+  WECHAT_PAY_SERIAL_NO: z.string().default(''),
+  WECHAT_PAY_PRIVATE_KEY_PATH: z.string().default(''),
+  WECHAT_PAY_PUBLIC_KEY_ID: z.string().default(''),
+  WECHAT_PAY_PUBLIC_KEY_PATH: z.string().default(''),
+  WECHAT_PAY_API_V3_KEY: z.string().default(''),
+  WECHAT_PAY_NOTIFY_URL: z.string().default(''),
+  PAY_SUPPORT_CONTACT: z.string().default(''),
 });
 
 export interface ModelConfig {
@@ -95,6 +108,41 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     throw new Error(
       '真实收款需要开启共享、完整虚拟支付/消息推送配置、已发布价位及已确定的项目方结算方案',
     );
+  if (value.PAYMENTS_ENABLED === 'true') {
+    if (value.NODE_ENV === 'production' && !isAbsolute(value.PAYMENT_DB_PATH))
+      throw new Error('生产支付账本必须配置到发布目录之外的绝对持久化路径');
+    for (const key of [
+      'WECHAT_APP_ID',
+      'WECHAT_APP_SECRET',
+      'WECHAT_PAY_MCH_ID',
+      'WECHAT_PAY_SERIAL_NO',
+      'WECHAT_PAY_PRIVATE_KEY_PATH',
+      'WECHAT_PAY_PUBLIC_KEY_ID',
+      'WECHAT_PAY_PUBLIC_KEY_PATH',
+      'PAY_SUPPORT_CONTACT',
+    ] as const)
+      if (!value[key]) throw new Error(`微信支付缺少配置：${key}`);
+    if (
+      !/^\d{6,20}$/.test(value.WECHAT_PAY_MCH_ID) ||
+      !/^[A-Fa-f0-9]+$/.test(value.WECHAT_PAY_SERIAL_NO) ||
+      !/^PUB_KEY_ID_[A-Za-z0-9]+$/.test(value.WECHAT_PAY_PUBLIC_KEY_ID)
+    )
+      throw new Error('微信支付商户号、证书序列号或公钥 ID 格式不正确');
+    if (Buffer.byteLength(value.WECHAT_PAY_API_V3_KEY) !== 32)
+      throw new Error('微信支付 APIv3 密钥必须为 32 字节');
+    const notify = new URL(value.WECHAT_PAY_NOTIFY_URL);
+    if (
+      notify.protocol !== 'https:' ||
+      notify.username ||
+      notify.password ||
+      notify.pathname !== '/api/payments/wechat/notify' ||
+      notify.search ||
+      notify.hash
+    )
+      throw new Error('微信支付通知地址必须是 HTTPS 的 /api/payments/wechat/notify');
+    if (value.SESSION_SECRET.length < 32)
+      throw new Error('支付账本需要稳定的 32 字符以上 SESSION_SECRET');
+  }
   if (value.NODE_ENV === 'production') {
     if (value.SESSION_SECRET.length < 32)
       throw new Error('生产环境需要至少 32 字符的 SESSION_SECRET');

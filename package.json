@@ -3,13 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "PitchCoach · 融资教练 — 先被 AI 问倒，再去见投资人。",
-  "license": "MIT",
+  "description": "AI投了么 — 先被 AI 问倒，再去见投资人。",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "packageManager": "pnpm@11.25.0",
   "engines": {
     "node": ">=22.13.0"
   },
   "scripts": {
+    "wechat:check": "node scripts/wechat-ci.mjs check",
+    "wechat:preview": "node scripts/wechat-ci.mjs preview",
+    "wechat:upload": "node scripts/wechat-ci.mjs upload",
     "dev": "pnpm --parallel --filter @pitchcoach/api --filter @pitchcoach/miniprogram dev",
     "dev:api": "pnpm --filter @pitchcoach/api dev",
     "dev:weixin": "pnpm --filter @pitchcoach/miniprogram dev:weixin",
@@ -23,6 +26,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.19.0",
+    "miniprogram-ci": "2.1.31",
     "typescript": "^5.9.3",
     "vitest": "^4.0.0"
   }

@@ -5,26 +5,27 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch --env-file-if-exists=../../.env src/server.ts",
-    "build": "tsup",
+    "build": "tsup && node scripts/check-runtime.mjs",
     "start": "node --env-file-if-exists=../../.env dist/server.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@pitchcoach/shared": "workspace:*",
     "@fastify/cors": "^11.3.1",
     "@fastify/helmet": "^13.0.2",
     "@fastify/multipart": "^10.1.4",
     "@fastify/rate-limit": "^11.2.1",
-    "@pitchcoach/shared": "workspace:*",
-    "fast-xml-parser": "^5.11.2",
     "fastify": "^5.12.7",
+    "fast-xml-parser": "^5.11.2",
     "jszip": "^3.10.2",
     "pdf-parse": "2.4.5",
-    "qrcode": "1.5.4",
-    "zod": "^4.1.0"
+    "zod": "^4.1.0",
+    "qrcode": "1.5.4"
   },
   "devDependencies": {
-    "@types/qrcode": "1.5.6",
+    "tsx": "^4.23.0",
     "tsup": "^8.5.0",
-    "tsx": "^4.23.0"
-  }
+    "@types/qrcode": "1.5.6"
+  },
+  "license": "PolyForm-Noncommercial-1.0.0"
 }

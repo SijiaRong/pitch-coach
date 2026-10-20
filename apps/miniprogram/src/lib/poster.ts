@@ -3,7 +3,7 @@ import type { EvaluationReport } from '@pitchcoach/shared';
 import { isPrivacyRefusal } from './privacy';
 
 export const POSTER_WIDTH = 300;
-export const POSTER_HEIGHT = 680;
+export const POSTER_HEIGHT = 736;
 export const POSTER_CANVAS_ID = 'risk-poster-v2';
 export interface PosterEntry {
   codePath: string;
@@ -42,12 +42,13 @@ export function drawPoster(
     ctx.fillRect(0, 0, POSTER_WIDTH, height);
     ctx.setFillStyle('#263d31');
     ctx.fillRect(0, 0, 300, 70);
+    ctx.drawImage('/static/brand/ai-toulema.png', 22, 15, 40, 40);
     ctx.setFontSize(19);
     ctx.setFillStyle('#d9f18a');
-    ctx.fillText('PitchCoach', 22, 36);
+    ctx.fillText('AI投了么', 72, 36);
     ctx.setFontSize(9);
     ctx.setFillStyle('#a7c0a5');
-    ctx.fillText('融资教练 · 先被 AI 问倒，再去见投资人', 22, 54);
+    ctx.fillText('先被 AI 问倒，再去见投资人', 72, 54);
     ctx.setFontSize(8);
     ctx.setFillStyle('#9aa48a');
     ctx.fillText('MY STARTUP, UNDER REVIEW', 22, 94);
@@ -159,6 +160,7 @@ export function drawPoster(
       ctx.setFontSize(8);
       ctx.fillText('DEMO', 250, footer + 14);
     }
+    if(!entry){ctx.setFillStyle('#263d31');ctx.setFontSize(13);ctx.fillText('微信搜索「AI投了么」',22,670);ctx.setFillStyle('#536a4c');ctx.setFontSize(10);ctx.fillText('免费查看示例报告，练习自己的项目',22,690);}
     ctx.draw(false, () =>
       uni.canvasToTempFilePath({
         canvasId: POSTER_CANVAS_ID,
@@ -178,7 +180,7 @@ export async function savePoster(path: string) {
   // #ifdef H5
   const link = document.createElement('a');
   link.href = path;
-  link.download = 'PitchCoach-融资体检.png';
+  link.download = 'AI投了么-项目评估.png';
   document.body.appendChild(link);
   link.click();
   link.remove();

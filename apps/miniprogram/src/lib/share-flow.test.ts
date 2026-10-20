@@ -12,7 +12,7 @@ describe('朋友圈优先的海报分享', () => {
     expect(showMenu).toHaveBeenCalledWith(
       expect.objectContaining({
         path: 'wxfile://poster.png',
-        entrancePath: '/pages/index/index',
+        entrancePath: '/pages/index/index?from=poster',
         needShowEntrance: true,
       }),
     );
@@ -52,7 +52,7 @@ describe('朋友圈优先的海报分享', () => {
       await openPosterShare('wxfile://poster.png', { showMenu, preview: vi.fn() }, path);
       expect(showMenu).toHaveBeenCalledWith(
         expect.objectContaining({
-          entrancePath: path.includes('?share=') ? path : '/pages/index/index',
+          entrancePath: path.includes('?share=') ? path : '/pages/index/index?from=poster',
         }),
       );
     }

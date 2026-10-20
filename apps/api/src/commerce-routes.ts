@@ -385,7 +385,7 @@ export function registerCommerce(
       nonce: z.string().min(1).max(128),
       echostr: z.string().max(4096).optional(),
     });
-    app.get('/api/payments/wechat/notify', async (request, reply) => {
+    app.get('/api/payments/virtual/notify', async (request, reply) => {
       const query = querySchema.parse(request.query);
       if (!query.echostr) throw new PublicError(400, 'INVALID_CHALLENGE', '缺少校验内容');
       if (query.msg_signature) {
@@ -395,7 +395,7 @@ export function registerCommerce(
       notifyCrypto.verify(query.signature || '', query.timestamp, query.nonce);
       return reply.type('text/plain').send(query.echostr);
     });
-    app.post('/api/payments/wechat/notify', { bodyLimit: 65536 }, async (request, reply) => {
+    app.post('/api/payments/virtual/notify', { bodyLimit: 65536 }, async (request, reply) => {
       const query = querySchema.parse(request.query);
       if (typeof request.body !== 'string')
         throw new PublicError(400, 'NOTIFY_FORMAT', '请在微信后台使用 XML 安全模式消息推送');
