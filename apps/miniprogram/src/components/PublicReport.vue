@@ -43,7 +43,7 @@ const tab = ref('risks');
           >{{ INVESTORS[review.investorId]?.name || 'AI 评审' }}
           <text>{{ review.score ?? '待补' }} · {{ VOTE_LABELS[review.vote] }}</text></view
         >
-        <text class="memo-label">{{ INVESTORS[review.investorId]?.title }} · AI 教练</text>
+        <text class="memo-label">{{ INVESTORS[review.investorId]?.title }} · AI 投资人</text>
         <text class="memo-body">“{{ review.oneLiner }}”</text
         ><text class="memo-body">{{ review.thesis }}</text>
         <text v-for="question in review.questions" :key="question" class="memo-quote"

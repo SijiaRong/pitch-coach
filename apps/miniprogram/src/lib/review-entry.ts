@@ -1,6 +1,7 @@
 import { DEFAULT_PREFERENCES, INDUSTRY_IDS, ROUND_IDS, STAGES, createDemoReport, panelPreferencesSchema } from '@pitchcoach/shared';
 import type { BillingStatus, EvaluationReport, IndustryId, JobStatus, PreferenceId, RoundId, Submission } from '@pitchcoach/shared';
 import { ref } from 'vue';
+import { randomPanelPreferences } from './investor-selection';
 
 export interface PitchDraft {
   projectName: string; industry: IndustryId; round: RoundId; preferences: PreferenceId[];
@@ -25,7 +26,7 @@ export const takeEntryNotice = () => { const value = entryNotice; entryNotice = 
 export const hasDraftContent = (value?: PitchDraft) => Boolean(value && (value.projectName.trim() || value.description.trim() || value.bpText.trim() || value.filename || value.consent || value.exampleFilled));
 export const draftReplacementBlocked = () => Boolean(starting || knownRecoverable.value || draft?.pendingJobId);
 export function emptyDraft(): PitchDraft {
-  return { projectName: '', industry: 'ai', round: 'angel', preferences: [...DEFAULT_PREFERENCES], stage: '已有原型', description: '', bpText: '', tone: 'sharp', consent: false, expandedBP: false, filename: '', exampleFilled: false, pendingJobId: '' };
+  return { projectName: '', industry: 'ai', round: 'angel', preferences: randomPanelPreferences(), stage: '已有原型', description: '', bpText: '', tone: 'sharp', consent: false, expandedBP: false, filename: '', exampleFilled: false, pendingJobId: '' };
 }
 export function freePreviewReport(industry: IndustryId, tone: Submission['tone'], round: RoundId, preferences: readonly PreferenceId[]) {
   const selected = panelPreferencesSchema.safeParse(preferences);

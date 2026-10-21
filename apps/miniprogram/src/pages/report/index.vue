@@ -390,7 +390,7 @@ const retry = () =>
             ><InvestorAvatar :investor="INVESTORS[review.investorId]" /><view class="investor-info"
               ><text class="investor-name"
                 >{{ INVESTORS[review.investorId].name }}
-                <text class="fiction-tag">AI 教练</text></text
+                <text class="fiction-tag">AI 投资人</text></text
               ><text class="investor-role">{{ INVESTORS[review.investorId].title }}</text></view
             ><view class="investor-score"
               ><text class="mono">{{ review.score ?? '—' }}</text
@@ -501,7 +501,7 @@ const retry = () =>
               }}</text></view
             ></button
           ><text class="privacy-reminder"
-            >海报只含分数、结论、八维评分和教练固定语录，不含你的原文、客户或财务数据。</text
+            >海报只含分数、结论、八维评分和投资人固定语录，不含你的原文、客户或财务数据。</text
           >
           <view v-if="posterError" class="error-box">{{ posterError }}</view>
           <button

@@ -422,7 +422,7 @@ function startEvaluation() {
       >
       <view class="viral-card"
         ><text class="viral-title">好项目，经得起追问。</text
-        ><text class="small-note">三位 AI 教练，帮你找到下一步。</text
+        ><text class="small-note">三位 AI 投资人，帮你找到下一步。</text
         ><button class="primary lime" @click="startEvaluation">评估我的项目 ↗</button></view
       >
       <button

@@ -2,7 +2,6 @@
 import { computed, ref, watch } from 'vue';
 import { onBackPress, onHide, onLoad, onShow, onUnload } from '@dcloudio/uni-app';
 import {
-  DEFAULT_PREFERENCES,
   FUNDING_ROUNDS,
   INDUSTRIES,
   INDUSTRY_IDS,
@@ -47,6 +46,8 @@ import type { ReviewOffer } from '@/lib/review-offer';
 import { aboutPath } from '@/lib/share-entry';
 import { clearRecoverable, getDraftEpoch, getKnownRecoverable, getPitchDraft, savePitchDraft, getStartingEvaluation, setStartingEvaluation, rememberBilling, takeEntryNotice } from '@/lib/review-entry';
 import type { PitchDraft } from '@/lib/review-entry';
+import { randomPanelPreferences, togglePanelPreference } from '@/lib/investor-selection';
+import { PITCH_STEPS as STEPS, usePitchWizard } from '@/lib/pitch-wizard';
 import { hasAIDataConsent, setAIDataConsent } from '@/lib/privacy';
 const memoryDraft = getPitchDraft();
 const draftEpoch = getDraftEpoch();
@@ -56,7 +57,7 @@ const referralProjectId = ref<string>();
 const projectName = ref(memoryDraft?.projectName || '');
 const industry = ref<IndustryId>(memoryDraft?.industry || 'ai');
 const round = ref<RoundId>(memoryDraft?.round || 'angel');
-const preferences = ref<PreferenceId[]>(memoryDraft ? [...memoryDraft.preferences] : [...DEFAULT_PREFERENCES]);
+const preferences = ref<PreferenceId[]>(memoryDraft ? [...memoryDraft.preferences] : randomPanelPreferences());
 const preferenceEditor = ref(false);
 const settingsExpanded = ref(false);
 const preferenceError = ref('');
@@ -97,7 +98,7 @@ const paymentLabel = computed(() => {
   if (recoverableJobId.value) return '继续已有评审 / 领取报告';
   if (checkingOrders.value) return '正在确认订单与额度…';
   if (configLoading.value) return '正在连接评审服务…';
-  if (serviceState.value === 'incomplete') return '请选满三位评审教练';
+  if (serviceState.value === 'incomplete') return '请选满三位评审投资人';
   if (serviceState.value !== 'ready') return '真实评审暂不可用';
   if (billing.value?.orders.some((order) => order.status === 'pending')) return '查询订单与额度';
   if (billing.value?.credits) return '使用 1 次额度，开始评审';
@@ -118,7 +119,7 @@ const currentRound = computed(() => getRound(round.value));
 const panel = computed(() =>
   preferences.value.map((preference) => getSpecialist(industry.value, round.value, preference)),
 );
-const panelReady = computed(() => preferences.value.length === PANEL_SIZE);
+const panelReady = computed(() => panelPreferencesSchema.safeParse(preferences.value).success);
 const panelKey = computed(() => `${industry.value}|${round.value}|${preferences.value.join(',')}`);
 const submissionResult = computed(() => submissionSchema.safeParse({
   projectName: projectName.value,
@@ -144,17 +145,17 @@ const busyTitle = computed(() => ({
   payment: '请在微信中完成支付',
   confirming: '正在确认支付结果',
   starting: '正在提交项目资料',
-  reviewing: '已向三位教练发起请求',
+  reviewing: '已向三位投资人发起请求',
 })[phase.value]);
 const busyDescription = computed(() => ({
   checking: '先核对已有订单，已有额度或报告时不会重复付款。',
   payment: `本次真实评审 ${priceLabel.value}，支付结果以服务端确认为准。`,
   confirming: '请勿重复付款。确认后会自动开始评审，已付款额度会保留。',
-  starting: '资料提交成功后，三位教练将分别给出反馈。',
+  starting: '资料提交成功后，三位投资人将分别给出反馈。',
   reviewing: `已完成 ${completed.value} / ${PANEL_SIZE}，最终报告按实际完成展示。`,
 })[phase.value]);
 const WAIT_TIPS = [
-  '教练正在读你的项目介绍',
+  '投资人正在读你的项目介绍',
   '正在核对商业模式里的关键假设',
   '正在找最可能被投资人追问的地方',
   '正在给八个维度逐项打分',
@@ -335,12 +336,6 @@ function startReview(submission: Submission, requestKey: string) {
 }
 
 // ---- Step-by-step flow: one question per screen, mostly tap to advance ----
-const STEPS = ['name', 'about', 'industry', 'round', 'stage', 'panel', 'confirm'] as const;
-type StepId = (typeof STEPS)[number];
-const STEP_FIELD: Partial<Record<StepId, 'projectName' | 'description'>> = {
-  name: 'projectName',
-  about: 'description',
-};
 const FIELD_STEP: Record<string, number> = {
   projectName: 0,
   description: 1,
@@ -365,24 +360,21 @@ const draftReady = Boolean(
     submissionSchema.shape.projectName.safeParse(memoryDraft.projectName).success &&
     submissionSchema.shape.description.safeParse(memoryDraft.description).success,
 );
-const step = ref(draftReady || getKnownRecoverable() ? STEPS.length - 1 : 0);
-const direction = ref<'forward' | 'back'>('forward');
-const stepTried = ref(false);
-const currentStep = computed<StepId>(() => STEPS[step.value]);
-const progress = computed(() => (step.value + 1) / STEPS.length);
-const issues = computed<Record<string, string>>(() => {
-  const fields: Record<string, string> = {};
-  if (!submissionResult.value.success)
-    for (const issue of submissionResult.value.error.issues)
-      fields[String(issue.path[0])] ||= issue.message;
-  return fields;
-});
-const stepError = computed(() => {
-  const field = STEP_FIELD[currentStep.value];
-  return field && (stepTried.value || attempted.value) ? issues.value[field] || '' : '';
+let advanceTimer: ReturnType<typeof setTimeout> | undefined;
+const { step, direction, currentStep, progress, stepError, stepTried, goTo, next, back,
+  inputName, inputDescription, confirmName } = usePitchWizard({
+  projectName, description, preferences, attempted,
+  startAt: draftReady || getKnownRecoverable() ? STEPS.length - 1 : 0,
+  onEdit: () => { exampleFilled.value = false; },
+  onInvalid: (current) => { if (current === 'panel') preferenceEditor.value = true; tapFeedback(); },
+  onNavigate: () => {
+    if (advanceTimer) clearTimeout(advanceTimer);
+    advanceTimer = undefined;
+    uni.hideKeyboard();
+    uni.pageScrollTo({ scrollTop: 0, duration: 0 });
+  },
 });
 const descriptionLength = computed(() => description.value.trim().length);
-let advanceTimer: ReturnType<typeof setTimeout> | undefined;
 function tapFeedback() {
   // #ifdef MP-WEIXIN
   try {
@@ -391,28 +383,6 @@ function tapFeedback() {
     /* Haptics are a nicety only. */
   }
   // #endif
-}
-function goTo(index: number) {
-  if (advanceTimer) clearTimeout(advanceTimer);
-  advanceTimer = undefined;
-  const target = Math.max(0, Math.min(STEPS.length - 1, index));
-  if (target === step.value) return;
-  direction.value = target > step.value ? 'forward' : 'back';
-  step.value = target;
-  stepTried.value = false;
-  uni.pageScrollTo({ scrollTop: 0, duration: 0 });
-}
-function next() {
-  const field = STEP_FIELD[currentStep.value];
-  if (field && issues.value[field]) {
-    stepTried.value = true;
-    tapFeedback();
-    return;
-  }
-  goTo(step.value + 1);
-}
-function back() {
-  if (step.value > 0) goTo(step.value - 1);
 }
 /** Tap a choice: select it, give the selection a beat to animate, then move on. */
 function choose(apply: () => void) {
@@ -460,7 +430,7 @@ async function clearDraft() {
   bpText.value = '';
   industry.value = 'ai';
   round.value = 'angel';
-  preferences.value = [...DEFAULT_PREFERENCES];
+  preferences.value = randomPanelPreferences();
   stage.value = '已有原型';
   tone.value = 'sharp';
   consent.value = false;
@@ -487,11 +457,16 @@ function toggleConsent() {
   setAIDataConsent(consent.value);
 }
 function togglePreference(id: PreferenceId) {
-  preferenceError.value = '';
-  if (preferences.value.includes(id))
-    preferences.value = preferences.value.filter((item) => item !== id);
-  else if (preferences.value.length < PANEL_SIZE) preferences.value = [...preferences.value, id];
-  else preferenceError.value = '先取消一种已选偏好，再邀请新的教练。';
+  const result = togglePanelPreference(preferences.value, id);
+  preferences.value = result.preferences;
+  preferenceError.value = result.error;
+}
+function inputBP(event: unknown) {
+  const value = (event as { detail?: { value?: unknown } } | undefined)?.detail?.value;
+  if (typeof value === 'string') {
+    bpText.value = value;
+    exampleFilled.value = false;
+  }
 }
 async function upload() {
   if (uploading.value || busy.value) return;
@@ -629,7 +604,7 @@ async function submit() {
         return;
       }
       if (!config.liveAvailable)
-        throw new Error('这组评审阵容暂时不可用，本次不会发起付款。可以换一组教练或稍后重试。');
+        throw new Error('这组评审阵容暂时不可用，本次不会发起付款。可以换一组投资人或稍后重试。');
       if (config.paymentsEnabled && !billing.value) {
         await refreshBilling();
         notice.value = billingError.value ? '' : '订单与额度已确认，请检查本次消耗后再次点击下方按钮。';
@@ -740,7 +715,7 @@ async function submit() {
 </script>
 
 <template>
-  <view class="page pitch-page">
+  <form class="page pitch-page" @submit="next">
     <PageHeader back label="项目评审" />
 
     <view class="wizard-progress" role="progressbar" :aria-valuenow="step + 1" aria-valuemin="1" :aria-valuemax="STEPS.length">
@@ -761,17 +736,18 @@ async function submit() {
         <text class="step-eyebrow">先认识一下</text>
         <view class="step-title">你的项目叫什么？</view>
         <input
-          v-model="projectName"
+          :value="projectName"
+          name="projectName"
           class="big-input"
           :class="{ invalid: stepError }"
           placeholder="例如：小店会员通"
           :maxlength="32"
-          :focus="!draftRestored"
           confirm-type="next"
           aria-label="项目名称，必填，最多32字"
           :aria-invalid="Boolean(stepError)"
-          @input="exampleFilled = false"
-          @confirm="next"
+          @input="inputName"
+          @blur="inputName"
+          @confirm="confirmName"
         />
         <view class="input-meta"><text>一个能被记住的名字就够了</text><text>{{ projectName.length }}/32</text></view>
         <text v-if="stepError" class="field-error shake" role="alert">{{ stepError }}</text>
@@ -795,7 +771,8 @@ async function submit() {
           <button hover-class="is-pressed" hover-stay-time="80" v-for="prompt in DESCRIPTION_PROMPTS" :key="prompt" class="prompt-chip" :class="{ used: description.includes(prompt) }" @click="addPrompt(prompt)">{{ description.includes(prompt) ? '✓ ' : '+ ' }}{{ prompt.replace('：', '') }}</button>
         </view>
         <textarea
-          v-model="description"
+          :value="description"
+          name="description"
           class="big-textarea"
           :class="{ invalid: stepError }"
           placeholder="我们为……提供……，通过……收费。目前已经……"
@@ -803,7 +780,8 @@ async function submit() {
           :auto-height="false"
           aria-label="项目介绍，必填，30至3000字"
           :aria-invalid="Boolean(stepError)"
-          @input="exampleFilled = false"
+          @input="inputDescription"
+          @blur="inputDescription"
         />
         <view class="length-meter">
           <view class="length-track"><view class="length-fill" :class="{ done: descriptionLength >= 30 }" :style="{ width: `${Math.min(1, descriptionLength / 30) * 100}%` }" /></view>
@@ -844,7 +822,7 @@ async function submit() {
       <template v-else-if="currentStep === 'stage'">
         <text class="step-eyebrow">{{ currentIndustry.name }} · {{ currentRound.name }}</text>
         <view class="step-title">项目现在走到哪一步？</view>
-        <text class="step-sub">如实选择，教练会按这个阶段来要求证据。</text>
+        <text class="step-sub">如实选择，投资人会按这个阶段来要求证据。</text>
         <view class="choice-list">
           <button hover-class="is-pressed" hover-stay-time="80" v-for="(item, index) in STAGES" :key="item" class="choice-row" :class="{ selected: stage === item }" :style="{ animationDelay: `${index * 40}ms` }" :aria-pressed="stage === item" @click="choose(() => (stage = item))">
             <view class="choice-row-copy"><text class="choice-name">{{ item }}</text><text class="choice-sub">{{ STAGE_HINTS[item] }}</text></view>
@@ -861,21 +839,21 @@ async function submit() {
           <button hover-class="is-pressed" hover-stay-time="80" class="tone-card" :class="{ selected: tone === 'sharp' }" :aria-pressed="tone === 'sharp'" @click="tone = 'sharp'; tapFeedback()"><view class="tone-top"><text>✳ 犀利版</text><view class="radio-dot" /></view><text class="tone-description">直说问题，追问到底</text></button>
           <button hover-class="is-pressed" hover-stay-time="80" class="tone-card" :class="{ selected: tone === 'balanced' }" :aria-pressed="tone === 'balanced'" @click="tone = 'balanced'; tapFeedback()"><view class="tone-top"><text>◈ 专业版</text><view class="radio-dot" /></view><text class="tone-description">冷静拆解，给出建议</text></button>
         </view>
-        <view class="panel-heading"><text>这三位教练会审你的项目</text><text class="panel-tag">AI 教练</text></view>
+        <view class="panel-heading"><text>这三位投资人会审你的项目</text><text class="panel-tag">AI 投资人</text></view>
         <view class="panel-people">
           <view v-for="(person, index) in panel" :key="person.id" class="panel-person" :style="{ animationDelay: `${index * 90}ms` }">
             <InvestorAvatar :investor="person" small />
             <view class="panel-person-copy"><text class="panel-name">{{ person.name }}</text><text class="panel-title">{{ person.title }}</text></view>
           </view>
         </view>
-        <button class="inline-link panel-toggle" :aria-expanded="preferenceEditor" @click="preferenceEditor = !preferenceEditor">{{ preferenceEditor ? '收起' : '换几位教练' }} {{ preferenceEditor ? '−' : '→' }}</button>
+        <button class="inline-link panel-toggle" :aria-expanded="preferenceEditor" @click="preferenceEditor = !preferenceEditor">{{ preferenceEditor ? '收起' : '换几位投资人' }} {{ preferenceEditor ? '−' : '→' }}</button>
         <view v-if="preferenceEditor" class="preference-editor">
-          <text class="caption">选满三种关注点，每种对应一位教练。</text>
+          <text class="caption">选满三种关注点，每种对应一位投资人。</text>
           <view class="preference-choices"><button v-for="item in PREFERENCES" :key="item.id" :class="{ selected: preferences.includes(item.id) }" :aria-pressed="preferences.includes(item.id)" @click="togglePreference(item.id); tapFeedback()">{{ preferences.includes(item.id) ? '✓ ' : '' }}{{ item.name }}</button></view>
-          <text v-if="preferenceError || !panelReady || fieldErrors.preferences" class="preference-hint" role="alert">{{ preferenceError || fieldErrors.preferences || `还差 ${PANEL_SIZE - preferences.length} 位，或恢复推荐阵容。` }}</text>
+          <text v-if="preferenceError || !panelReady || fieldErrors.preferences" class="preference-hint" role="alert">{{ preferenceError || fieldErrors.preferences || `还差 ${PANEL_SIZE - preferences.length} 位，或随机换一组。` }}</text>
           <view class="editor-links">
-            <button class="inline-link" @click="preferences = [...DEFAULT_PREFERENCES]; preferenceError = ''">恢复推荐阵容</button>
-            <button class="inline-link" @click="uni.navigateTo({ url: `/pages/investors/index?industry=${industry}&round=${round}` })">认识全部教练 →</button>
+            <button class="inline-link" @click="preferences = randomPanelPreferences(); preferenceError = ''">随机换一组</button>
+            <button class="inline-link" @click="uni.navigateTo({ url: `/pages/investors/index?industry=${industry}&round=${round}&preferences=${preferences.join(',')}` })">认识全部投资人 →</button>
           </view>
         </view>
       </template>
@@ -887,7 +865,7 @@ async function submit() {
         <view class="summary-card">
           <button hover-class="is-pressed" hover-stay-time="80" class="summary-row" @click="goTo(0)"><text class="summary-label">项目</text><text class="summary-value">{{ projectName || '未填写' }}</text><text class="summary-edit">改</text></button>
           <button hover-class="is-pressed" hover-stay-time="80" class="summary-row" @click="goTo(2)"><text class="summary-label">视角</text><text class="summary-value">{{ currentIndustry.shortName }} · {{ currentRound.name }} · {{ stage }}</text><text class="summary-edit">改</text></button>
-          <button hover-class="is-pressed" hover-stay-time="80" class="summary-row" @click="goTo(5)"><text class="summary-label">教练</text><text class="summary-value">{{ panelReady ? preferenceSummary : `已选 ${preferences.length} / 3` }} · {{ tone === 'sharp' ? '犀利' : '专业' }}</text><text class="summary-edit">改</text></button>
+          <button hover-class="is-pressed" hover-stay-time="80" class="summary-row" @click="goTo(5)"><text class="summary-label">投资人</text><text class="summary-value">{{ panelReady ? preferenceSummary : `已选 ${preferences.length} / 3` }} · {{ tone === 'sharp' ? '犀利' : '专业' }}</text><text class="summary-edit">改</text></button>
         </view>
 
         <button hover-class="is-pressed" hover-stay-time="80" id="field-consent" class="consent-toggle" :class="{ checked: consent, invalid: fieldErrors.consent }" role="checkbox" :aria-checked="consent" @click="toggleConsent(); tapFeedback()">
@@ -908,7 +886,7 @@ async function submit() {
           <button class="upload-box" :disabled="uploading || busy" @click="upload"><view class="upload-icon">{{ uploading ? '◌' : '↥' }}</view><view class="upload-copy"><text class="upload-title">{{ uploading ? '正在提取文字…' : filename || '上传 BP 文件' }}</text><text class="upload-description">PDF / PPTX / DOCX / TXT / MD · 10 MB 内</text></view></button>
           <text v-if="uploadError" class="field-error" role="alert">{{ uploadError }}</text>
           <text v-if="uploadNotice" class="upload-notice" role="status">{{ uploadNotice }}</text>
-          <textarea v-model="bpText" class="bp-input" :disabled="uploading" placeholder="或直接粘贴：客户、市场、竞争、收入成本、团队、融资用途……" :maxlength="50000" aria-label="补充项目资料，选填，最多50000字" @input="exampleFilled = false" />
+          <textarea :value="bpText" class="bp-input" :disabled="uploading" placeholder="或直接粘贴：客户、市场、竞争、收入成本、团队、融资用途……" :maxlength="50000" aria-label="补充项目资料，选填，最多50000字" @input="inputBP" />
           <text class="bp-count">{{ bpText.length.toLocaleString() }}/50,000</text>
           <text v-if="fieldErrors.bpText" class="field-error" role="alert">{{ fieldErrors.bpText }}</text>
         </view>
@@ -927,7 +905,7 @@ async function submit() {
           <button class="fold-row compact" :aria-expanded="ordersExpanded" @click="ordersExpanded = !ordersExpanded"><text class="fold-sub">费用、订单与退款</text><text class="fold-icon" :class="{ open: ordersExpanded }">+</text></button>
           <view v-if="ordersExpanded" class="billing-details">
             <text v-if="paymentsEnabled && !billing" class="billing-rule">尚未查询你的额度；确认时会先查账户，有额度优先使用。</text>
-            <text class="billing-rule">至少一位教练生成报告即计 1 次；全部失败会恢复额度。中途退出不会中断评审。未使用额度退款由人工处理。</text>
+            <text class="billing-rule">至少一位投资人生成报告即计 1 次；全部失败会恢复额度。中途退出不会中断评审。未使用额度退款由人工处理。</text>
             <button class="inline-link" :disabled="busy || checkingOrders" @click="refreshBilling">{{ checkingOrders ? '正在查询…' : '查询订单与额度 ↻' }}</button>
             <view v-for="order in billing?.orders.slice(0, 5)" :key="order.id" class="billing-order"><text>{{ orderLabels[order.status] || order.status }} · {{ order.id.slice(-8) }}</text><button class="inline-link" @click="uni.setClipboardData({ data: order.id })">复制订单号</button></view>
             <template v-if="billing?.supportContact || currentOffer?.supportContact"><button class="inline-link" @click="uni.setClipboardData({ data: billing?.supportContact || currentOffer?.supportContact || '' })">复制客服联系方式</button><text class="billing-support">{{ billing?.supportContact || currentOffer?.supportContact }}</text></template>
@@ -943,7 +921,7 @@ async function submit() {
 
     <view class="action-bar">
       <button v-if="step > 0" class="action-back" aria-label="上一步" @click="back">←</button>
-      <button v-if="currentStep !== 'confirm'" class="primary action-next" @click="next">{{ currentStep === 'panel' && !panelReady ? `再选 ${PANEL_SIZE - preferences.length} 位教练` : '下一步' }}</button>
+      <button v-if="currentStep !== 'confirm'" class="primary action-next" form-type="submit">{{ currentStep === 'panel' && !panelReady ? `再选 ${PANEL_SIZE - preferences.length} 位投资人` : '下一步' }}</button>
       <button v-else class="primary lime action-next" :disabled="busy || uploading || confirmingExample || checkingOrders || (!recoverableJobId && configLoading) || (!recoverableJobId && serviceState !== 'ready')" @click="submit"><text>{{ confirmingExample ? '请确认示例用途…' : paymentLabel }}</text><text>↗</text></button>
     </view>
 
@@ -967,7 +945,7 @@ async function submit() {
         <button v-if="pendingJobId && !paymentsEnabled && !resumingJob" class="cancel-button" :disabled="cancelling" @click="cancel">{{ cancelling ? '正在取消…' : '取消本次评审' }}</button>
       </view>
     </view>
-  </view>
+  </form>
 </template>
 
 <style scoped>

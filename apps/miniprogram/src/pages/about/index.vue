@@ -35,7 +35,7 @@ function jumpTo(section: string) {
     ><PageHeader back label="使用说明与常见问题" />
     <view class="about-title">先了解规则，<br />再安心开始。</view>
     <text class="about-intro"
-      >AI投了么是一款创业项目自检工具。教练是按行业与轮次设定的 AI
+      >AI投了么是一款创业项目自检工具。投资人是按行业与轮次设定的 AI
       角色（非真人），评审只基于你主动提交的资料。</text
     >
     <view class="privacy-entry">
@@ -61,11 +61,11 @@ function jumpTo(section: string) {
       <text
         >一次真实 AI
         评审请求，包含八个维度的分析与证据缺口、风险、模拟追问和优先改进清单。向三位专项 AI
-        教练发起请求，报告按实际完成展示。</text
+        投资人发起请求，报告按实际完成展示。</text
       >
-      <view class="about-section-title faq-following">2. 部分教练失败怎么计次？</view>
+      <view class="about-section-title faq-following">2. 部分投资人失败怎么计次？</view>
       <text
-        >至少一位教练生成报告即计 1
+        >至少一位投资人生成报告即计 1
         次；全部失败恢复本次额度。部分结果会标明实际完成人数，不会自动补齐。暂时退出不会中断评审，已付但未使用的额度会保留。</text
       >
     </view>
@@ -103,7 +103,7 @@ function jumpTo(section: string) {
     <view id="about-refund" class="faq-card"
       ><view class="about-section-title">6. 未使用额度如何退款？</view
       ><text
-        >复制订单号联系运营者，由人工核实未使用额度并原路退款。退出页面不会自动退款，未使用额度会保留。已生成至少一位教练结果的报告按本次评审计次。</text
+        >复制订单号联系运营者，由人工核实未使用额度并原路退款。退出页面不会自动退款，未使用额度会保留。已生成至少一位投资人结果的报告按本次评审计次。</text
       ><view class="contact-card"
         ><text v-if="offer?.supportContact">运营客服：{{ offer.supportContact }}</text
         ><text v-else>{{
@@ -118,8 +118,8 @@ function jumpTo(section: string) {
       ><view class="about-section-title">它怎么打分</view
       ><text
         >{{ FUNDING_ROUNDS.length }} 个融资轮次 × {{ INDUSTRIES.length }} 个领域 ×
-        {{ PREFERENCES.length }} 种投资偏好，共 {{ INVESTOR_ROSTER.length }} 位专项 AI 教练。
-        每场邀请三种不同偏好的教练，分别审阅八个维度；可在提交页更换组合。行业与轮次影响证据要求和评分权重，偏好影响追问重点。
+        {{ PREFERENCES.length }} 种投资偏好，共 {{ INVESTOR_ROSTER.length }} 位专项 AI 投资人。
+        每场邀请三种不同偏好的投资人，分别审阅八个维度；可在提交页更换组合。行业与轮次影响证据要求和评分权重，偏好影响追问重点。
         产品阶段单独填写，不与融资轮次混用。角色数量代表专项评审定位，不代表同等数量的独立训练模型。</text
       ><text
         >单项取有效评审分数的平均值，再按行业与轮次组合后的权重计算参考分。没有相关资料的维度标为“待补”，不按零分处理。评分证据覆盖低于
@@ -155,7 +155,7 @@ function jumpTo(section: string) {
     <view class="about-section"
       ><view class="about-section-title">犀利的边界</view
       ><text
-        >点评针对项目与商业逻辑，教练均为 AI
+        >点评针对项目与商业逻辑，投资人均为 AI
         角色（非真人）。所有评估和“是否投资”结论均是模拟意见，仅用于创业项目自检，不代表真实机构的投资意向、投资承诺或成功概率。</text
       ><text
         >评分完全由 AI 依据你提交的资料逐项给出，不会因付费、分享或公开而调整；海报与公开页展示的分数与报告一致。评估失败时会明确报错。</text

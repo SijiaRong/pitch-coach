@@ -9,7 +9,7 @@ const price = computed(() => props.state === 'ready' && props.offer?.liveAvailab
   <view class="offer-status" :class="{ compact, pending: state !== 'ready' || !offer?.liveAvailable }" role="status">
     <template v-if="price"><text class="offer-price">{{ price }}</text><text> / 次真实 AI 评审</text></template>
     <text v-else>{{ offerDescription(state, offer) }}</text>
-    <text v-if="price" class="offer-detail">发起三位教练请求，按实际完成展示</text>
+    <text v-if="price" class="offer-detail">发起三位投资人请求，按实际完成展示</text>
   </view>
 </template>
 <style scoped>
