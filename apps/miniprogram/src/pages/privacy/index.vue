@@ -255,7 +255,7 @@ function copy(value: string) {
       </button>
       <view v-if="section === 'terms'" class="section-content">
         <text
-          >融资教练用于创业项目自检。所有教练均为 AI
+          >AI投了么用于创业项目自检。所有投资人均为 AI
           角色（姓名为设定，非真人），与真实人物和投资机构无关；“是否推进”等结论是模拟意见，不代表真实投资意向、投资承诺、估值或成功概率，不构成投资、法律等专业建议。</text
         >
         <text

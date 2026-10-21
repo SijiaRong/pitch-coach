@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { onUnmounted, ref } from 'vue';
+import { computed, onUnmounted, ref } from 'vue';
 import { onLoad, onShow, onShareAppMessage, onShareTimeline } from '@dcloudio/uni-app';
-import { INDUSTRIES, getIndustry, getPanel, getRound } from '@pitchcoach/shared';
+import { getIndustry, getPanel, getPreference, getRound } from '@pitchcoach/shared';
 import type { IndustryId, RoundId } from '@pitchcoach/shared';
 import PageHeader from '@/components/PageHeader.vue';
 import BottomNav from '@/components/BottomNav.vue';
@@ -9,6 +9,7 @@ import InvestorAvatar from '@/components/InvestorAvatar.vue';
 import ReviewOfferStatus from '@/components/ReviewOfferStatus.vue';
 import { openReviewEntry } from '@/lib/review-entry';
 import { useReviewOffer } from '@/lib/review-offer';
+import { homeQuestions } from '@/lib/home-questions';
 import {
   aboutPath,
   friendShareMessage,
@@ -22,15 +23,11 @@ onShow(() => {
 const source = ref('');
 const entryIndustry = ref<IndustryId>('ai');
 const entryRound = ref<RoundId>('angel');
-const previewPanel = getPanel('ai', 'angel');
-// Ticker: each industry's lead coach and their fixed catalog opening line. No fictional project.
-const tickerItems = INDUSTRIES.map((item) => {
-  const who = getPanel(item.id, 'angel')[0];
-  return { question: who.opening, who, industry: item.name };
-});
+const previewPanel = computed(() => getPanel(entryIndustry.value, entryRound.value));
+const tickerItems = ref(homeQuestions());
 const tick = ref(0);
 const tickTimer = setInterval(() => {
-  tick.value = (tick.value + 1) % tickerItems.length;
+  tick.value = (tick.value + 1) % tickerItems.value.length;
 }, 3400);
 onUnmounted(() => clearInterval(tickTimer));
 const start = (industry?: IndustryId, round?: RoundId) =>
@@ -40,9 +37,9 @@ onLoad((options) => {
   source.value = safe.from || '';
   entryIndustry.value = safe.industry || 'ai';
   entryRound.value = safe.round || 'angel';
-  // Start the ticker on the sharer's industry so the first line feels relevant.
-  const first = INDUSTRIES.findIndex((item) => item.id === entryIndustry.value);
-  if (first > 0) tick.value = first;
+  if (safe.industry || safe.round || safe.from)
+    tickerItems.value = homeQuestions({ industry: entryIndustry.value, round: entryRound.value });
+  tick.value = 0;
 });
 onShareAppMessage(() =>
   friendShareMessage({ industry: entryIndustry.value, round: entryRound.value }),
@@ -62,7 +59,7 @@ onShareTimeline(() =>
       >
       <text class="hero-description">把融资难题，变成下一步行动。</text>
       <view class="hero-proof"
-        ><text>288 位 AI 教练</text><text>8 个领域</text><text>6 个轮次</text></view
+        ><text>288 位 AI 投资人</text><text>8 个领域</text><text>6 个轮次</text></view
       >
       <ReviewOfferStatus :state="state" :offer="offer" />
       <button class="primary lime hero-primary" @click="start()">
@@ -77,10 +74,10 @@ onShareTimeline(() =>
       </button>
     </view>
     <view class="ticker" aria-live="polite">
-      <view class="ticker-head"><text>AI 投委会会这样问你</text><text class="ticker-tag">{{ tickerItems[tick].industry }}</text></view>
+      <view class="ticker-head"><text>AI 投委会会这样问你</text><text class="ticker-tag">{{ getIndustry(tickerItems[tick].industry).shortName }} · {{ getRound(tickerItems[tick].round).name }}</text></view>
       <view :key="tick" class="ticker-body">
-        <InvestorAvatar :investor="tickerItems[tick].who" small />
-        <text class="ticker-question">“{{ tickerItems[tick].question }}”</text>
+        <InvestorAvatar :investor="tickerItems[tick]" small />
+        <view class="ticker-copy"><text class="ticker-lens">{{ getPreference(tickerItems[tick].preference).name }}视角</text><text class="ticker-question">“{{ tickerItems[tick].question }}”</text><text class="ticker-round-question">{{ getRound(tickerItems[tick].round).name }}还会追问：{{ tickerItems[tick].roundQuestion }}</text></view>
       </view>
       <view class="ticker-dots"><view v-for="(_, index) in tickerItems" :key="index" class="ticker-dot" :class="{ on: index === tick }" /></view>
     </view>
@@ -95,7 +92,7 @@ onShareTimeline(() =>
     </view>
     <view class="committee-row">
       <view class="committee-people"><view v-for="person in previewPanel" :key="person.id" class="committee-person"><InvestorAvatar :investor="person" small /></view></view>
-      <view class="committee-copy"><text class="committee-title">三位 AI 教练，三种视角</text><text class="committee-sub">按行业与轮次匹配 · AI 角色，非真人</text></view>
+      <view class="committee-copy"><text class="committee-title">三位 AI 投资人，三种视角</text><text class="committee-sub">按行业与轮次匹配 · AI 角色，非真人</text></view>
       <button class="committee-link" @click="uni.navigateTo({ url: '/pages/investors/index' })">认识 →</button>
     </view>
     <view class="home-trust"
@@ -225,11 +222,14 @@ onShareTimeline(() =>
 .home-page .hero-primary { margin-top: 18px; animation: rise .5s ease .15s both, breathe 3.2s ease-in-out 1.2s infinite; }
 @keyframes breathe { 50% { box-shadow: 0 0 0 7px #d9f18a55; } }
 .ticker { margin-top: 30px; padding: 16px 18px 12px; border-radius: 20px; background: #233b2f; color: #eef4e3; animation: rise .5s ease .2s both; }
-.ticker-head { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #a9c29d; }
+.ticker-head { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; font-size: 12px; color: #a9c29d; }
 .ticker-tag { padding: 1px 8px; border: 1px solid #a9c29d55; border-radius: 10px; font-size: 11px; }
 .ticker-body { display: flex; align-items: flex-start; gap: 12px; min-height: 92px; padding: 14px 0 6px; animation: ticker-in .5s cubic-bezier(.2,.8,.2,1) both; }
 @keyframes ticker-in { from { opacity: 0; transform: translateY(14px); } }
-.ticker-question { flex: 1; font-size: 16px; font-weight: 700; line-height: 1.7; }
+.ticker-copy { flex: 1; min-width: 0; }
+.ticker-lens { display: block; color: #bcd69f; font-size: 11px; margin-bottom: 5px; }
+.ticker-question { display: block; font-size: 16px; font-weight: 700; line-height: 1.7; }
+.ticker-round-question { display: block; color: #c2d2b9; font-size: 12px; line-height: 1.7; margin-top: 8px; }
 .ticker-dots { display: flex; gap: 5px; justify-content: center; }
 .ticker-dot { width: 5px; height: 5px; border-radius: 3px; background: #ffffff33; transition: width .3s, background .3s; }
 .ticker-dot.on { width: 16px; background: #d9f18a; }

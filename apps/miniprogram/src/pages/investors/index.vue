@@ -2,7 +2,6 @@
 import { computed, ref, watch } from 'vue';
 import { onLoad, onShow } from '@dcloudio/uni-app';
 import {
-  DEFAULT_PREFERENCES,
   FUNDING_ROUNDS,
   INDUSTRIES,
   INDUSTRY_IDS,
@@ -12,22 +11,25 @@ import {
   getPreference,
   getRound,
   getSpecialist,
-  recommendPreferences,
+  panelPreferencesSchema,
 } from '@pitchcoach/shared';
-import type { IndustryId, PreferenceId, RoundId, SpecialistInvestor } from '@pitchcoach/shared';
+import type { IndustryId, PreferenceId, RoundId } from '@pitchcoach/shared';
 import PageHeader from '@/components/PageHeader.vue';
 import InvestorAvatar from '@/components/InvestorAvatar.vue';
 import ReviewOfferStatus from '@/components/ReviewOfferStatus.vue';
 import { useReviewOffer } from '@/lib/review-offer';
 import { aboutPath } from '@/lib/share-entry';
+import { randomPanelPreferences, togglePanelPreference } from '@/lib/investor-selection';
 const { state, offer, load } = useReviewOffer();
 onShow(() => { void load(); });
 
 const industry = ref<IndustryId>('ai');
 const round = ref<RoundId>('angel');
-const preference = ref<PreferenceId | ''>('');
+const selectedPreferences = ref<PreferenceId[]>(randomPanelPreferences());
+const preferenceError = ref('');
+const panelReady = computed(() => panelPreferencesSchema.safeParse(selectedPreferences.value).success);
 const expandedId = ref('');
-// One coach per screen: swipe or tap the dots to move through the roster.
+// One investor per screen: swipe or tap the dots to move through the roster.
 const current = ref(0);
 const currentInvestor = computed(() => roster.value[Math.min(current.value, roster.value.length - 1)]);
 function onSwipe(event: { detail: { current: number } }) {
@@ -36,21 +38,22 @@ function onSwipe(event: { detail: { current: number } }) {
 }
 const currentRound = computed(() => getRound(round.value));
 const roster = computed(() =>
-  PREFERENCES.filter((item) => !preference.value || item.id === preference.value).map((item) =>
+  PREFERENCES.map((item) =>
     getSpecialist(industry.value, round.value, item.id),
   ),
 );
-const matchedPreferences = computed(() =>
-  preference.value ? recommendPreferences(preference.value) : [...DEFAULT_PREFERENCES],
-);
 const matchedPreferenceNames = computed(() =>
-  matchedPreferences.value.map((item) => getPreference(item).name).join(' · '),
+  selectedPreferences.value.map((item) => getPreference(item).name).join(' · '),
 );
 onLoad((options) => {
   if (options?.industry && INDUSTRY_IDS.includes(options.industry as IndustryId))
     industry.value = options.industry as IndustryId;
   if (options?.round && ROUND_IDS.includes(options.round as RoundId))
     round.value = options.round as RoundId;
+  if (options?.preferences) {
+    const parsed = panelPreferencesSchema.safeParse(options.preferences.split(','));
+    if (parsed.success) selectedPreferences.value = parsed.data;
+  }
 });
 watch(roster, () => {
   current.value = 0;
@@ -66,10 +69,19 @@ function setRound(event: { detail: { value: string | number } }) {
   if (selected) round.value = selected.id;
   expandedId.value = '';
 }
-function invite(investor?: SpecialistInvestor) {
-  const preferences = investor
-    ? recommendPreferences(investor.preference)
-    : [...matchedPreferences.value];
+function togglePreference(id: PreferenceId) {
+  const result = togglePanelPreference(selectedPreferences.value, id);
+  selectedPreferences.value = result.preferences;
+  preferenceError.value = result.error;
+}
+function randomizePanel() {
+  selectedPreferences.value = randomPanelPreferences();
+  preferenceError.value = '';
+}
+function invite() {
+  const parsed = panelPreferencesSchema.safeParse(selectedPreferences.value);
+  if (!parsed.success) { preferenceError.value = '请选满三位不同偏好的 AI 投资人。'; return; }
+  const preferences = parsed.data;
   const pages = getCurrentPages();
   if (pages.length > 1 && pages[pages.length - 2].route === 'pages/pitch/index') {
     uni.$emit('pitch:select-panel', { industry: industry.value, round: round.value, preferences });
@@ -84,15 +96,15 @@ function invite(investor?: SpecialistInvestor) {
 
 <template>
   <view class="page compact investors-page">
-    <PageHeader back label="认识 AI 教练" />
+    <PageHeader back label="认识 AI 投资人" />
     <view class="investors-heading"
       ><text class="eyebrow">换个视角，看清项目</text
       ><view class="investors-title">你关心的难题，<br />让专业视角来追问。</view
       ><text class="investors-description"
-        >选好行业和轮次，左右滑动认识每位教练。</text
+        >选好行业和轮次，选满三位不同偏好的 AI 投资人。已随机选好三位，你可以自由更换。</text
       ></view
     >
-    <view class="directory-offer"><ReviewOfferStatus :state="state" :offer="offer" compact /><text>选用教练不额外加价；下一步填写自己的项目，不会立即扣费。</text><button @click="uni.navigateTo({ url: aboutPath('billing') })">交付与计次说明 →</button></view>
+    <view class="directory-offer"><ReviewOfferStatus :state="state" :offer="offer" compact /><text>选用投资人不额外加价；下一步填写自己的项目，不会立即扣费。</text><button @click="uni.navigateTo({ url: aboutPath('billing') })">交付与计次说明 →</button></view>
     <view class="coach-filters surface">
       <view class="filter-heading"
         ><text>匹配你的项目</text><text class="filter-step">01 / 行业与轮次</text></view
@@ -130,35 +142,32 @@ function invite(investor?: SpecialistInvestor) {
         ><text>{{ currentRound.question }}</text></view
       >
       <view class="preference-heading"
-        ><text class="focus-label">02 / 浏览评审偏好</text
+        ><text class="focus-label">02 / 选择三位 · {{ selectedPreferences.length }} / 3</text
         ><button
           class="filter-reset"
-          :class="{ selected: !preference }"
-          :aria-pressed="!preference"
-          @click="preference = ''"
+          @click="randomizePanel"
         >
-          查看全部 {{ PREFERENCES.length }} 位
+          随机换一组
         </button></view
       >
       <view class="preference-filters"
         ><button
           v-for="item in PREFERENCES"
           :key="item.id"
-          :class="{ selected: preference === item.id }"
-          :aria-pressed="preference === item.id"
-          @click="preference = preference === item.id ? '' : item.id"
+          :class="{ selected: selectedPreferences.includes(item.id) }"
+          :aria-pressed="selectedPreferences.includes(item.id)"
+          @click="togglePreference(item.id)"
         >
-          <text v-if="preference === item.id" class="filter-check">✓</text>{{ item.name }}
+          <text v-if="selectedPreferences.includes(item.id)" class="filter-check">✓</text>{{ item.name }}
         </button></view
       >
+      <text class="selection-hint" :class="{ invalid: preferenceError || !panelReady }" role="status">{{ preferenceError || (panelReady ? '已选满三位。更换时先取消一位，再选择新的视角。' : `还需选择 ${3 - selectedPreferences.length} 位 AI 投资人。`) }}</text>
     </view>
     <view class="roster-heading"
       ><view
         ><text class="roster-title">{{ getIndustry(industry).name }} · {{ currentRound.name }}</text
-        ><text class="roster-caption">{{
-          preference ? `${getPreference(preference).name}视角` : '按评审偏好认识教练'
-        }}</text></view
-      ><text class="roster-count">{{ roster.length }} 位教练</text></view
+        ><text class="roster-caption">左右滑动，认识六种评审视角</text></view
+      ><text class="roster-count">{{ roster.length }} 位投资人</text></view
     >
     <swiper
       class="roster-swiper"
@@ -173,17 +182,18 @@ function invite(investor?: SpecialistInvestor) {
           <view class="profile-top"
             ><InvestorAvatar :investor="investor" /><view class="profile-identity"
               ><view class="profile-name">{{ investor.name }}</view
-              ><text class="profile-role">AI 教练</text></view
+              ><text class="profile-role">AI 投资人</text></view
             ><view class="profile-kind">{{ getPreference(investor.preference).name }}</view></view
           >
           <view class="profile-quote">“{{ investor.opening }}”</view>
           <text class="profile-style clamp">{{ investor.style }}</text>
           <button
             class="profile-invite"
-            :aria-label="`选用${investor.name}的评审视角，下一步填写项目`"
-            @click="invite(investor)"
+            :aria-label="`${selectedPreferences.includes(investor.preference) ? '取消' : '选择'}${investor.name}的评审视角`"
+            :aria-pressed="selectedPreferences.includes(investor.preference)"
+            @click="togglePreference(investor.preference)"
           >
-            <text>选这个视角，去填项目</text><text>→</text>
+            <text>{{ selectedPreferences.includes(investor.preference) ? '已加入投委会 · 点击取消' : '加入我的投委会' }}</text><text>{{ selectedPreferences.includes(investor.preference) ? '✓' : '+' }}</text>
           </button>
         </view>
       </swiper-item>
@@ -218,14 +228,14 @@ function invite(investor?: SpecialistInvestor) {
       >
     </view>
     <view class="notice"
-      >所有教练均为 AI 角色（姓名为设定，非真人），不代表任何机构。评审仅供参考，不构成投资建议。</view
+      >所有投资人均为 AI 角色（姓名为设定，非真人），不代表任何机构。评审仅供参考，不构成投资建议。</view
     >
     <view class="directory-footer"
       ><view class="footer-match"
-        ><text class="footer-label">当前推荐的三种视角</text
+        ><text class="footer-label">已选 {{ selectedPreferences.length }} / 3 位 AI 投资人</text
         ><text class="footer-preferences">{{ matchedPreferenceNames }}</text></view
-      ><button class="primary lime" @click="invite()">
-        <view class="footer-cta-copy"><text>选用这组教练 ↗</text><text>下一步填写项目</text></view>
+      ><button class="primary lime" :disabled="!panelReady" @click="invite()">
+        <view class="footer-cta-copy"><text>{{ panelReady ? '用这三位投资人评审项目 ↗' : `还需选择 ${3 - selectedPreferences.length} 位投资人` }}</text><text>下一步填写项目</text></view>
       </button></view
     >
   </view>
@@ -368,6 +378,8 @@ function invite(investor?: SpecialistInvestor) {
 .filter-check {
   font-size: 12px;
 }
+.selection-hint { display: block; margin-top: 12px; color: #607651; font-size: 12px; line-height: 1.8; }
+.selection-hint.invalid { color: #a04038; }
 .roster-heading {
   display: flex;
   align-items: center;

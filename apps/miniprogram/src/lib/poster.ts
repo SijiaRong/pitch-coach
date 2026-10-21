@@ -269,7 +269,7 @@ export function drawPoster(
       font(12.5, true);
       const lines = wrap(ctx, `“${model.coach.opening}”`, 244, 2);
       lines.forEach((line, index) => text(line, 32, y + index * 18, 12.5, C.ink, true));
-      text(`—— ${model.coach.name} · ${model.coach.title}（AI 教练）`, 32, y + lines.length * 18 + 4, 8, C.muted);
+      text(`—— ${model.coach.name} · ${model.coach.title}（AI 投资人）`, 32, y + lines.length * 18 + 4, 8, C.muted);
       y += lines.length * 18 + 26;
     }
 
