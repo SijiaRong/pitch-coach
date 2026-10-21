@@ -715,7 +715,8 @@ async function submit() {
 </script>
 
 <template>
-  <form class="page pitch-page" @submit="next">
+  <view class="page pitch-page">
+    <form @submit="next">
     <PageHeader back label="项目评审" />
 
     <view class="wizard-progress" role="progressbar" :aria-valuenow="step + 1" aria-valuemin="1" :aria-valuemax="STEPS.length">
@@ -945,7 +946,8 @@ async function submit() {
         <button v-if="pendingJobId && !paymentsEnabled && !resumingJob" class="cancel-button" :disabled="cancelling" @click="cancel">{{ cancelling ? '正在取消…' : '取消本次评审' }}</button>
       </view>
     </view>
-  </form>
+    </form>
+  </view>
 </template>
 
 <style scoped>
