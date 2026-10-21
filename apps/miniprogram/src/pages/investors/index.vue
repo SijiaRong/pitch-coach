@@ -234,8 +234,8 @@ function invite() {
       ><view class="footer-match"
         ><text class="footer-label">已选 {{ selectedPreferences.length }} / 3 位 AI 投资人</text
         ><text class="footer-preferences">{{ matchedPreferenceNames }}</text></view
-      ><button class="primary lime" :disabled="!panelReady" @click="invite()">
-        <view class="footer-cta-copy"><text>{{ panelReady ? '用这三位投资人评审项目 ↗' : `还需选择 ${3 - selectedPreferences.length} 位投资人` }}</text><text>下一步填写项目</text></view>
+      ><button class="primary lime directory-cta" :disabled="!panelReady" @click="invite()">
+        {{ panelReady ? '开始评审项目' : `还需选择 ${3 - selectedPreferences.length} 位投资人` }}
       </button></view
     >
   </view>
@@ -550,8 +550,15 @@ function invite() {
   color: #3f5e33;
   line-height: 1.65;
 }
-.directory-footer .primary {
-  justify-content: space-between;
+.investors-page .directory-footer .directory-cta {
+  justify-content: center;
+  min-height: 56px;
+  padding: 14px 16px;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: center;
+  white-space: nowrap;
 }
 @media (max-width: 350px) {
   .investors-title {
@@ -584,8 +591,6 @@ function invite() {
 .directory-offer { margin: 0 0 20px; padding: 16px; border: 1px solid #dfe5d7; background: #edf2e3; border-radius: 16px; }
 .directory-offer > text { display: block; font-size: 12px; line-height: 1.75; color: #626d64; margin-top: 10px; }
 .investors-page .directory-offer button { min-height: 44px; width: 100%; text-align: left; color: #2f684e; font-size: 12px; padding-top: 8px; }
-.footer-cta-copy text { display: block; }
-.footer-cta-copy text:last-child { font-size: 12px; font-weight: 400; margin-top: 2px; }
 .roster-swiper { height: 330px; margin: 0 -24px 0 0; }
 .roster-swiper swiper-item, .roster-swiper uni-swiper-item { padding-right: 12px; box-sizing: border-box; }
 .investors-page .roster-swiper .investor-profile { height: 318px; margin: 0; display: flex; flex-direction: column; transition: transform .3s ease, opacity .3s ease; }
